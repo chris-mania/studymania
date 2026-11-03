@@ -1,0 +1,17 @@
+# Study Mania on Cloudflare Pages  ->  https://studymania.pages.dev
+name = "studymania"
+pages_build_output_dir = "./public"
+compatibility_date = "2025-06-01"
+
+# Same database as before.
+[[d1_databases]]
+binding = "DB"
+database_name = "studymania"
+database_id = "82e81f4b-e87e-4552-91ab-500185a1f6d1"
+
+[vars]
+
+VAPID_PUBLIC_KEY = "BHUHfpkJzefvlYraRp1c2FNrkFCvAhmbwN52m4GlTnWWjYRFE1_HmzNY6VSfONkrUqpFg0nQueMF2dj24-Jvw0g"
+VAPID_SUBJECT = "mailto:chrismania10@gmail.com"
+# Optional email reset links (see README): uncomment after verifying your domain in Resend.
+# EMAIL_FROM = "Study Mania <hello@yourdomain.com>"

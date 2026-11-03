@@ -1,0 +1,19 @@
+# The small Worker that sends daily reminders every hour.
+# Deploy with:  npx wrangler deploy -c reminders.toml
+name = "studymania-reminders"
+main = "src/reminders.js"
+compatibility_date = "2025-06-01"
+workers_dev = false
+
+[triggers]
+crons = ["0 * * * *"]
+
+# Same three values as wrangler.toml
+[[d1_databases]]
+binding = "DB"
+database_name = "studymania"
+database_id = "82e81f4b-e87e-4552-91ab-500185a1f6d1"
+
+[vars]
+VAPID_PUBLIC_KEY = "BHUHfpkJzefvlYraRp1c2FNrkFCvAhmbwN52m4GlTnWWjYRFE1_HmzNY6VSfONkrUqpFg0nQueMF2dj24-Jvw0g"
+VAPID_SUBJECT = "mailto:chrismania10@gmail.com"
