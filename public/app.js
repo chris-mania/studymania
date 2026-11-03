@@ -201,9 +201,9 @@ function authView(mode, { upgrade } = {}) {
         <button type="button" id="t-in" aria-pressed="${mode === "login"}">Sign in</button>
       </div>`}
       ${mode === "signup" ? `
-      <label class="field">Username<input id="f-user" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="chrismania" maxlength="20">
+      <label class="field">Username<input id="f-user" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="studyking22" maxlength="20">
         <span class="small" id="f-user-msg" style="font-weight:400;color:var(--muted)">Shows on the leaderboard. You can sign in with it too.</span></label>
-      <label class="field">First name <span class="muted small" style="font-weight:400">(optional)</span><input id="f-name" autocomplete="given-name" placeholder="Chris"></label>
+      <label class="field">First name <span class="muted small" style="font-weight:400">(optional)</span><input id="f-name" autocomplete="given-name" placeholder="Alex"></label>
       <label class="field">Email<input id="f-email" type="email" autocomplete="email" inputmode="email" required></label>` : `
       <label class="field">Username or email<input id="f-login" autocomplete="username" autocapitalize="none" spellcheck="false" required></label>`}
       <label class="field">Password<input id="f-pass" type="password" autocomplete="${mode === "signup" ? "new-password" : "current-password"}" minlength="8" required>
@@ -263,7 +263,7 @@ function wireUsernameCheck(input, msg, current) {
 // Accounts made before usernames existed pick one the first time they open the app.
 function usernameSheet(done) {
   const el = sheet(`<h2>Pick a username</h2><p class="muted">It shows on the leaderboard, and you can sign in with it instead of your email.</p>
-    <label class="field">Username<input id="u-new" autocapitalize="none" spellcheck="false" maxlength="20" placeholder="chrismania"><span class="small" id="u-msg" style="font-weight:400;color:var(--muted)">3-20 letters, numbers, _ or .</span></label>
+    <label class="field">Username<input id="u-new" autocapitalize="none" spellcheck="false" maxlength="20" placeholder="studyking22"><span class="small" id="u-msg" style="font-weight:400;color:var(--muted)">3-20 letters, numbers, _ or .</span></label>
     <button class="btn primary block" id="u-save">Save username</button>`);
   wireUsernameCheck(el.querySelector("#u-new"), el.querySelector("#u-msg"));
   el.onclick = null; // can't skip by tapping outside
