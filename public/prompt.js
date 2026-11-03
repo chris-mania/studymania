@@ -9,7 +9,7 @@ WHAT TO MAKE A CARD FOR
 PAIR SMALL LOOK-ALIKE TERMS (so there's less to memorize)
 - If 2-3 terms are minor, easy, and similar or often mixed up (for example "groupthink" and "social loafing"), make them ONE pair card instead of separate cards.
 - Pair card: "term" is "Groupthink vs. Social Loafing"; "simple" gives both meanings in one line ("Groupthink: everyone agrees to avoid conflict. Social loafing: slacking off in a group."); "definition" and "example" cover both; and "parts" lists each one: [{"term":"Groupthink","simple":"...","example":"..."},{"term":"Social Loafing","simple":"...","example":"..."}].
-- For a pair card, "question" is a short scenario that fits exactly one of them, "answer" is that term's name, and "traps" are the other term(s) plus a believable near-miss.
+- For a pair card, "question" is a short scenario that fits exactly one of them, "answer" is that term's name, and "traps" are only the OTHER term name(s) from that same pair (don't add terms from other cards).
 - Big concepts, formulas and anything my notes stress stay as their own cards. For normal cards, "parts" is [].
 
 CARD FIELDS
@@ -21,14 +21,14 @@ CARD FIELDS
 - "example": the BEST real-world example you can think of: a well-known company, product, celebrity, sports team, historical moment, or everyday college-student situation. Make it specific, vivid and a little fun, with real numbers when it helps. For a formula, show a worked example with numbers.
 - "hook": a short memory trick, like a letter trick, a comparison, a rhyme, or a picture to imagine.
 - "answer": the correct meaning REWORDED for a quiz. Do NOT reuse the wording of "definition" or "simple", so students must understand it, not just match words.
-- "traps": exactly 3 WRONG answers that are near-misses. Same length and style as "answer", believable, only slightly off. At least one should describe the concept students most often confuse it with. Never silly, never "all/none of the above".
+- "traps": exactly 3 WRONG answers that are near-misses. Same length and style as "answer", believable, only slightly off. At least one should describe the concept students most often confuse it with. Write them as descriptions, NOT as the names of other terms, because the student may not have learned those terms yet. Never silly, never "all/none of the above".
 - "confuse": one line on what it's commonly mixed up with and how to tell them apart, or "".
 - "related": 2-4 other terms from these cards it connects to, using their exact "term" text.
 - "formula": the formula if there is one, else "".
 - "question": usually "". Only for a sequence or "which is NOT" item, write the exact question to ask, and make "answer" the right choice.
 
 EXAM QUESTIONS
-For each topic also write 2-3 exam-style questions like a professor would put on a test: apply an idea to a short scenario, pick which concept a situation shows, compare two ideas, or calculate something. 4 choices, exactly one correct, and the wrong choices are near-misses. "answer" must be copied exactly from one of the choices. "why" explains the answer in one sentence.
+For each topic also write 2-3 exam-style questions like a professor would put on a test. Choices can only use terms from that topic or earlier topics, never later ones. Good questions apply an idea to a short scenario, pick which concept a situation shows, compare two ideas, or calculate something. 4 choices, exactly one correct, and the wrong choices are near-misses. "answer" must be copied exactly from one of the choices. "why" explains the answer in one sentence.
 
 RULES
 - Facts must come from my notes, or be standard textbook knowledge that matches them. If something in my notes is unclear, skip it rather than guess.

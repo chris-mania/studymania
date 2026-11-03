@@ -870,21 +870,34 @@ function cardView(k) {
     ${k.related?.length ? `<div><div class="kicker" style="color:var(--muted);margin-bottom:8px">Goes with</div><div class="chips">${k.related.map((r) => `<span>${esc(r)}</span>`).join("")}</div></div>` : ""}
   </div>`;
 }
+// Only words you've already been taught can show up as answer choices.
+// d.seen = ids of cards learned before + the cards in the lesson you're doing now.
+const seenCards = (d) => d.cards.filter((x) => !d.seen || d.seen.has(x.id));
 function siblings(d, k, n, field) {
-  const same = shuffle(d.cards.filter((x) => x.id !== k.id && x.topic === k.topic && !x.question));
-  const rest = shuffle(d.cards.filter((x) => x.id !== k.id && x.topic !== k.topic && !x.question));
+  const pool = seenCards(d).filter((x) => x.id !== k.id && !x.question);
+  const same = shuffle(pool.filter((x) => x.topic === k.topic)), rest = shuffle(pool.filter((x) => x.topic !== k.topic));
   const out = [], seen = new Set([String(k[field] || "").toLowerCase()]);
   for (const x of same.concat(rest)) { const v = x[field]; if (v && !seen.has(v.toLowerCase())) { seen.add(v.toLowerCase()); out.push(v); } if (out.length >= n) break; }
   return out;
 }
+// A trap that is the name of a word you haven't learned yet gets swapped for one you have.
+function safeTraps(d, k) {
+  const norm = (t) => String(t || "").trim().toLowerCase();
+  const unseenNames = new Set(d.cards.filter((x) => d.seen && !d.seen.has(x.id)).flatMap((x) => [x.term, ...(x.parts || []).map((p) => p.term)]).map(norm));
+  const ownNames = new Set([k.term, ...(k.parts || []).map((p) => p.term)].map(norm));
+  let traps = (k.traps || []).filter(Boolean).filter((t) => !unseenNames.has(norm(t)) || ownNames.has(norm(t))).slice(0, 3);
+  const answerIsName = d.cards.some((x) => norm(x.term) === norm(k.answer) || (x.parts || []).some((p) => norm(p.term) === norm(k.answer)));
+  if (traps.length < 3) traps = traps.concat(siblings(d, k, 3 - traps.length, answerIsName ? "term" : "answer").filter((t) => norm(t) !== norm(k.answer) && !traps.includes(t)));
+  return traps;
+}
 function meaningQ(d, k) {
-  let traps = (k.traps || []).filter(Boolean).slice(0, 3);
-  if (traps.length < 3) traps = traps.concat(siblings(d, k, 3 - traps.length, "answer"));
-  return { k, topic: k.topic, html: k.question ? esc(k.question) : `What does <b>${esc(k.term)}</b> mean?${k.full ? `<span class="sub">${esc(k.full)}</span>` : ""}`, opts: shuffle([k.answer, ...traps]), ans: k.answer };
+  return { k, topic: k.topic, html: k.question ? esc(k.question) : `What does <b>${esc(k.term)}</b> mean?${k.full ? `<span class="sub">${esc(k.full)}</span>` : ""}`, opts: shuffle([k.answer, ...safeTraps(d, k)]), ans: k.answer };
 }
 function termQ(d, k) {
   if (k.question) return meaningQ(d, k);
-  return { k, topic: k.topic, html: `Which term fits?<span class="sub">${esc(k.answer)}</span>`, opts: shuffle([k.term, ...siblings(d, k, 3, "term")]), ans: k.term };
+  const others = siblings(d, k, 3, "term");
+  if (others.length < 1) return meaningQ(d, k); // not enough learned words yet for a "which term" question
+  return { k, topic: k.topic, html: `Which term fits?<span class="sub">${esc(k.answer)}</span>`, opts: shuffle([k.term, ...others]), ans: k.term };
 }
 function tfQ(d, k) {
   if (k.question) return meaningQ(d, k);
@@ -901,6 +914,7 @@ route(/^\/s\/([\w-]+)\/(next|review|quiz|lesson|misses)(?:\/(\d+))?$/, async (id
   try { d = await loadCourse(id); } catch (e) { toast(e.message); return go("/"); }
   const T = todayStr();
   const byId = Object.fromEntries(d.cards.map((k) => [k.id, k]));
+  d.seen = new Set(d.cards.filter((k) => isLearned(d, k)).map((k) => k.id));
   const lessonOf = {}; d.lessons.forEach((l) => l.cards.forEach((k) => (lessonOf[k.id] = l.n)));
   let steps = [], lesson = null;
   const mode = kind === "lesson" || kind === "next" ? "learn" : "review";
@@ -908,6 +922,7 @@ route(/^\/s\/([\w-]+)\/(next|review|quiz|lesson|misses)(?:\/(\d+))?$/, async (id
   if (kind === "lesson") lesson = d.lessons[+num - 1];
   if (mode === "learn") {
     if (!lesson) { toast("All lessons are learned. Here's a review."); return go(`/s/${id}/review`); }
+    lesson.cards.forEach((k) => d.seen.add(k.id));
     lesson.cards.forEach((k) => steps.push({ t: "teach", k }, { t: "check", k }));
     shuffle([...lesson.cards]).forEach((k) => steps.push({ t: "recap", k }));
     // Throwbacks: older words sprinkled in, missed and overdue ones first.
@@ -922,7 +937,7 @@ route(/^\/s\/([\w-]+)\/(next|review|quiz|lesson|misses)(?:\/(\d+))?$/, async (id
       pool = pool.slice(0, kind === "review" ? 12 : 10);
     }
     if (!pool.length) { toast(kind === "review" ? "Nothing due yet. Nice." : "Learn a lesson first."); return go(`/c/${id}`); }
-    if (kind === "misses") pool.forEach((k) => steps.push({ t: "teach", k, again: true }));
+    if (kind === "misses") pool.forEach((k) => { d.seen.add(k.id); steps.push({ t: "teach", k, again: true }); });
     shuffle(pool).forEach((k, i) => steps.push({ t: i % 2 ? "recap" : "check", k }));
   }
 
@@ -1098,6 +1113,7 @@ route(/^\/exam\/([\w-]+)$/, async (id) => {
   const run = (p) => {
     const n = Math.min(S.count, p.cards.length + p.qs.length);
     const ai = shuffle([...p.qs]).slice(0, Math.min(p.qs.length, Math.ceil(n * 0.5))).map(aiQ);
+    d.seen = S.from === "all" ? null : new Set(d.cards.filter((k) => isLearned(d, k)).map((k) => k.id));
     const cardQs = shuffle([...p.cards]).slice(0, n - ai.length).map((k, j) => [meaningQ, termQ, tfQ][j % 3](d, k));
     const qs = shuffle(ai.concat(cardQs)), answers = new Array(qs.length).fill(null);
     const endAt = S.timer ? Date.now() + qs.length * 60e3 : 0;
