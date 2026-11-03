@@ -1,7 +1,7 @@
 // Study Mania API (Cloudflare Worker + D1)
 import { sendPush } from "./webpush.js";
 import { ensureDb } from "./migrate.js";
-import { addDays, daysBetween, isDay, nextReview, summarize, cleanCard, cleanQuestion, weekStart } from "../public/shared.mjs";
+import { addDays, daysBetween, isDay, nextReview, summarize, cleanCard, cleanQuestion, weekStart, secondReminderHour } from "../public/shared.mjs";
 
 const SESSION_DAYS = 60;
 const MAX_CARDS_PER_COURSE = 800;
@@ -530,17 +530,32 @@ async function nudgeFor(env, user, day) {
   return { title: pu.streak ? `🔥 Keep your ${pu.streak}-day streak going` : "📚 Time for today's study", body };
 }
 
+// Hourly: up to 2 nudges a day, only on days you haven't studied yet.
+// 1st at your chosen hour, 2nd ("are you sure?") 6 hours later (less if that would pass midnight).
 export async function sendReminders(env) {
-  const { results } = await env.DB.prepare("SELECT DISTINCT u.id, u.tz, u.remind_hour, u.last_study_day, u.last_nudge_day FROM users u JOIN push_subs p ON p.user_id = u.id").all();
+  const { results } = await env.DB.prepare(
+    "SELECT DISTINCT u.id, u.tz, u.remind_hour, u.last_study_day, u.last_nudge_day, u.nudges_today FROM users u JOIN push_subs p ON p.user_id = u.id").all();
   for (const u of results) {
     const now = localNow(u.tz || "America/New_York");
-    if (now.hour !== u.remind_hour || u.last_study_day === now.day || u.last_nudge_day === now.day) continue;
-    await env.DB.prepare("UPDATE users SET last_nudge_day = ? WHERE id = ?").bind(now.day, u.id).run();
+    if (u.last_study_day === now.day) continue;
+    const sentToday = u.last_nudge_day === now.day ? u.nudges_today || 0 : 0;
+    const second = secondReminderHour(u.remind_hour);
+    let which = 0;
+    if (sentToday === 0 && now.hour === u.remind_hour) which = 1;
+    else if (sentToday === 1 && second !== null && now.hour === second) which = 2;
+    if (!which) continue;
+    await env.DB.prepare("UPDATE users SET last_nudge_day = ?, nudges_today = ? WHERE id = ?").bind(now.day, which, u.id).run();
+    const full = await getUser(env, u.id);
+    const msg = await nudgeFor(env, full, now.day);
+    if (which === 2) {
+      const streak = publicUser(full, now.day).streak;
+      msg.title = streak ? `⏰ Your ${streak}-day streak ends at midnight` : "⏰ Still time to study today";
+      msg.body = "Are you sure you want to skip today? One lesson takes about 5 minutes. " + msg.body;
+    }
     const subs = (await env.DB.prepare("SELECT endpoint, p256dh, auth FROM push_subs WHERE user_id = ?").bind(u.id).all()).results;
-    const msg = await nudgeFor(env, await getUser(env, u.id), now.day);
-    for (const s of subs) {
-      const r = await sendPush(env, s, msg);
-      if (r.result === "gone") await env.DB.prepare("DELETE FROM push_subs WHERE endpoint = ?").bind(s.endpoint).run();
+    for (const sub of subs) {
+      const r = await sendPush(env, sub, msg);
+      if (r.result === "gone") await env.DB.prepare("DELETE FROM push_subs WHERE endpoint = ?").bind(sub.endpoint).run();
     }
   }
   await env.DB.prepare("DELETE FROM sessions WHERE expires_at < ?").bind(Date.now()).run();

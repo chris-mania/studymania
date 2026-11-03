@@ -54,6 +54,14 @@ export function pickThrowbacks(cards, progress, excludeIds, today, n = 3) {
 
 export const MAX_LESSONS_PER_DAY = 4;
 
+// Second reminder: 6 hours after the first, but never past midnight.
+// If 6 hours would run into tomorrow, halve the gap (3, then 2, then 1). Returns null if there's no room.
+export function secondReminderHour(first) {
+  let gap = 6;
+  while (first + gap > 23 && gap > 1) gap = Math.ceil(gap / 2);
+  return first + gap <= 23 ? first + gap : null;
+}
+
 // ---------- lessons ----------
 // Cards are grouped by (batch of notes, topic), in order, then split into lessons of up to 5.
 export function buildLessons(cards) {

@@ -16,7 +16,8 @@ CREATE TABLE IF NOT EXISTS users (
   last_study_day TEXT,                   -- YYYY-MM-DD in the user's own time zone
   freezes INTEGER DEFAULT 0,             -- streak freezes (earn 1 per 7-day streak, hold up to 2)
   lb_hidden INTEGER DEFAULT 0,           -- 1 = hide me from the leaderboard
-  last_nudge_day TEXT,                   -- day the last reminder went out (max one a day)
+  last_nudge_day TEXT,                   -- day the last reminder went out
+  nudges_today INTEGER DEFAULT 0,        -- reminders sent that day (max 2)
   -- password recovery: security questions (answers stored hashed)
   sec_q1 TEXT, sec_a1 TEXT, sec_q2 TEXT, sec_a2 TEXT, sec_salt TEXT,
   recover_fails INTEGER DEFAULT 0,

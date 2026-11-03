@@ -1,5 +1,5 @@
 /* Study Mania — app screens */
-import { addDays, daysBetween, niceDate, buildLessons, planFor, pickThrowbacks } from "./shared.mjs";
+import { addDays, daysBetween, niceDate, buildLessons, planFor, pickThrowbacks, secondReminderHour } from "./shared.mjs";
 import { localApi, hasGuestData, guestExport, clearGuest } from "./local.mjs";
 
 // ---------- helpers ----------
@@ -1193,7 +1193,7 @@ route(/^\/settings$/, async () => {
     <div class="card">
       ${GUEST ? "" : `<div class="setrow"><span>Username</span><div style="max-width:60%;text-align:right"><input id="s-user" value="${esc(u.username || "")}" autocapitalize="none" spellcheck="false" maxlength="20"><span class="small" id="s-user-msg" style="display:block;color:var(--muted)"></span></div></div>`}
       <div class="setrow"><span>Name</span><input id="s-name" value="${esc(u.name || "")}" style="max-width:55%"></div>
-      <div class="setrow"><span>Look</span><div class="seg" role="group" aria-label="Light or dark">${[["", "Phone"], ["light", "Light"], ["dark", "Dark"]].map(([v, l]) => `<button data-th="${v}" aria-pressed="${(store.get("sm-theme", null) || "") === v}">${l}</button>`).join("")}</div></div>
+      <div class="setrow"><span>Look</span><div class="seg" role="group" aria-label="Light or dark">${[["light", "Light"], ["dark", "Dark"]].map(([v, l]) => `<button data-th="${v}" aria-pressed="${themeNow() === v}">${l}</button>`).join("")}</div></div>
       <div class="setrow"><span>Daily goal<br><span class="muted small">rounds a day for the ring</span></span><div class="seg" role="group" aria-label="Rounds per day">${[1, 2, 3, 5].map((n) => `<button data-g="${n}" aria-pressed="${u.daily_goal === n}">${n}</button>`).join("")}</div></div>
       ${GUEST ? "" : `<div class="setrow"><span>Reminder time</span><select id="s-hour" aria-label="Reminder time">${hours}</select></div>`}
       ${GUEST ? "" : `<div class="setrow"><span>Show me on the leaderboard</span><div class="seg"><button id="s-lb" aria-pressed="${!u.lb_hidden}">${u.lb_hidden ? "Hidden" : "Shown"}</button></div></div>`}
@@ -1215,8 +1215,8 @@ route(/^\/settings$/, async () => {
   $("s-name").onchange = (e) => patch({ name: e.target.value });
   if ($("s-user")) { wireUsernameCheck($("s-user"), $("s-user-msg"), u.username); $("s-user").onchange = (e) => patch({ username: e.target.value }); }
   if ($("s-lb")) $("s-lb").onclick = async (e) => { const hide = !ME.user.lb_hidden; await patch({ lb_hidden: hide }); e.target.textContent = hide ? "Hidden" : "Shown"; e.target.setAttribute("aria-pressed", !hide); };
-  app.querySelectorAll("[data-th]").forEach((b) => (b.onclick = () => { const v = b.dataset.th || null; store.set("sm-theme", v); applyTheme(v); render(); }));
-  if ($("s-hour")) $("s-hour").onchange = (e) => patch({ remind_hour: +e.target.value, tz: tz() });
+  app.querySelectorAll("[data-th]").forEach((b) => (b.onclick = () => { store.set("sm-theme", b.dataset.th); applyTheme(b.dataset.th); render(); }));
+  if ($("s-hour")) $("s-hour").onchange = async (e) => { await patch({ remind_hour: +e.target.value, tz: tz() }); pushUI(); };
   app.querySelectorAll("[data-g]").forEach((b) => (b.onclick = async () => { await patch({ daily_goal: +b.dataset.g }); app.querySelectorAll("[data-g]").forEach((x) => x.setAttribute("aria-pressed", x === b)); }));
   $("s-snd").onclick = (e) => { const v = !store.get("sm-sound", true); store.set("sm-sound", v); e.target.textContent = v ? "On" : "Off"; e.target.setAttribute("aria-pressed", v); if (v) chime("good"); };
   if ($("s-signin")) $("s-signin").onclick = (e) => { e.preventDefault(); GUEST = false; store.set("sm-guest", false); ME = null; authView("login"); };
@@ -1236,7 +1236,11 @@ async function pushUI() {
   }
   const reg = await navigator.serviceWorker.ready, sub = await reg.pushManager.getSubscription();
   if (sub && Notification.permission === "granted") store.set("sm-push-on", true);
-  if (sub && Notification.permission === "granted") { st.textContent = `On. You'll get one nudge at ${$("s-hour").selectedOptions[0].text} on days you haven't studied yet.`; test.hidden = false; }
+  if (sub && Notification.permission === "granted") {
+    const h = +$("s-hour").value, h2 = secondReminderHour(h), fmt = (x) => `${((x + 11) % 12) + 1}:00 ${x < 12 ? "AM" : "PM"}`;
+    st.textContent = `On. On days you haven't studied yet, you'll get a nudge at ${fmt(h)}${h2 !== null ? `, and one more at ${fmt(h2)} if you still haven't` : ""}.`;
+    test.hidden = false;
+  }
   else if (Notification.permission === "denied") st.textContent = "Notifications are blocked for Study Mania. Turn them on in your phone's settings, then come back.";
   else { st.textContent = "Get one nudge a day so you don't break your streak."; on.hidden = false; }
   on.onclick = enablePush;
