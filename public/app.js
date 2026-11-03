@@ -1240,7 +1240,12 @@ async function pushUI() {
   else if (Notification.permission === "denied") st.textContent = "Notifications are blocked for Study Mania. Turn them on in your phone's settings, then come back.";
   else { st.textContent = "Get one nudge a day so you don't break your streak."; on.hidden = false; }
   on.onclick = enablePush;
-  test.onclick = async () => { try { const r = await api("/push/test", { method: "POST" }); toast(r.sent ? "Sent. Check your notifications." : "Couldn't send. Try turning reminders off and on."); } catch (e) { toast(e.message); } };
+  test.onclick = async () => {
+    test.disabled = true;
+    try { const r = await api("/push/test", { method: "POST" }); toast(r.sent ? "Sent! It should pop up in a few seconds." : r.why || "Couldn't send. Turn reminders off and on again.", 6000); }
+    catch (e) { toast(e.message); }
+    test.disabled = false;
+  };
 }
 async function enablePush() {
   try {

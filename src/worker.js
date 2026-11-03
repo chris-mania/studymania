@@ -477,16 +477,8 @@ async function api(req, env, url) {
     return json({ user: publicUser(await getUser(env, user.id), day), today: await today(env, user.id, day), used_freeze: usedFreeze, earned_freeze: earnedFreeze });
   }
 
-  if (path === "/nudge" && method === "GET") {
-    const courses = await courseSummaries(env, user.id, day);
-    const pu = publicUser(user, day);
-    const due = courses.reduce((a, c) => a + c.due, 0);
-    const lessons = courses.reduce((a, c) => a + (c.plan.todayLeft || 0), 0);
-    const soon = courses.filter((c) => c.exam_date && c.exam_date >= day).sort((a, b) => a.exam_date.localeCompare(b.exam_date))[0];
-    let body = [lessons ? `${lessons} lesson${lessons > 1 ? "s" : ""} planned today.` : "", due ? `${due} words ready to review.` : ""].filter(Boolean).join(" ") || "Take a quick lap through your words.";
-    if (soon) { const n = Math.round((new Date(soon.exam_date) - new Date(day)) / 864e5); body += ` ${n === 0 ? "Your " + soon.name + " exam is today!" : n + " day" + (n === 1 ? "" : "s") + " until " + soon.name + "."}`; }
-    return json({ title: pu.streak ? `🔥 Keep your ${pu.streak}-day streak going` : "📚 Time for today's study", body });
-  }
+  if (path === "/nudge" && method === "GET") return json(await nudgeFor(env, user, day));
+
 
   if (path === "/push/key" && method === "GET") return json({ key: env.VAPID_PUBLIC_KEY || null });
   if (path === "/push/subscribe" && method === "POST") {
@@ -502,14 +494,17 @@ async function api(req, env, url) {
     return json({ ok: true });
   }
   if (path === "/push/test" && method === "POST") {
-    const { results } = await env.DB.prepare("SELECT endpoint FROM push_subs WHERE user_id = ?").bind(user.id).all();
-    let sent = 0;
+    const { results } = await env.DB.prepare("SELECT endpoint, p256dh, auth FROM push_subs WHERE user_id = ?").bind(user.id).all();
+    if (!results.length) return json({ sent: 0, devices: 0, why: "This account has no phone signed up for reminders yet. Tap Turn on reminders first." });
+    const msg = { ...(await nudgeFor(env, user, day)), title: "✅ Reminders are working" };
+    let sent = 0, why = null;
     for (const s of results) {
-      const r = await sendPush(env, s.endpoint);
-      if (r === "ok") sent++;
-      if (r === "gone") await env.DB.prepare("DELETE FROM push_subs WHERE endpoint = ?").bind(s.endpoint).run();
+      const r = await sendPush(env, s, msg);
+      if (r.result === "ok") sent++;
+      else if (r.result === "gone") await env.DB.prepare("DELETE FROM push_subs WHERE endpoint = ?").bind(s.endpoint).run();
+      else why = r.why;
     }
-    return json({ sent, devices: results.length });
+    return json({ sent, devices: results.length, why: sent ? null : why || "That phone's reminder sign-up expired. Turn reminders off and on again." });
   }
 
   if (path === "/account" && method === "DELETE") {
@@ -523,16 +518,29 @@ async function api(req, env, url) {
 }
 
 // Hourly: nudge everyone whose reminder hour it is and who hasn't studied today.
+// The reminder text: streak, today's plan, exam countdown.
+async function nudgeFor(env, user, day) {
+  const courses = await courseSummaries(env, user.id, day);
+  const pu = publicUser(user, day);
+  const due = courses.reduce((a, c) => a + c.due, 0);
+  const lessons = courses.reduce((a, c) => a + (c.plan.todayLeft || 0), 0);
+  const soon = courses.filter((c) => c.exam_date && c.exam_date >= day).sort((a, b) => a.exam_date.localeCompare(b.exam_date))[0];
+  let body = [lessons ? `${lessons} lesson${lessons > 1 ? "s" : ""} planned today.` : "", due ? `${due} words ready to review.` : ""].filter(Boolean).join(" ") || "Take a quick lap through your words.";
+  if (soon) { const n = daysBetween(day, soon.exam_date); body += ` ${n === 0 ? "Your " + soon.name + " exam is today!" : n + " day" + (n === 1 ? "" : "s") + " until " + soon.name + "."}`; }
+  return { title: pu.streak ? `🔥 Keep your ${pu.streak}-day streak going` : "📚 Time for today's study", body };
+}
+
 export async function sendReminders(env) {
   const { results } = await env.DB.prepare("SELECT DISTINCT u.id, u.tz, u.remind_hour, u.last_study_day, u.last_nudge_day FROM users u JOIN push_subs p ON p.user_id = u.id").all();
   for (const u of results) {
     const now = localNow(u.tz || "America/New_York");
     if (now.hour !== u.remind_hour || u.last_study_day === now.day || u.last_nudge_day === now.day) continue;
     await env.DB.prepare("UPDATE users SET last_nudge_day = ? WHERE id = ?").bind(now.day, u.id).run();
-    const subs = (await env.DB.prepare("SELECT endpoint FROM push_subs WHERE user_id = ?").bind(u.id).all()).results;
+    const subs = (await env.DB.prepare("SELECT endpoint, p256dh, auth FROM push_subs WHERE user_id = ?").bind(u.id).all()).results;
+    const msg = await nudgeFor(env, await getUser(env, u.id), now.day);
     for (const s of subs) {
-      const r = await sendPush(env, s.endpoint);
-      if (r === "gone") await env.DB.prepare("DELETE FROM push_subs WHERE endpoint = ?").bind(s.endpoint).run();
+      const r = await sendPush(env, s, msg);
+      if (r.result === "gone") await env.DB.prepare("DELETE FROM push_subs WHERE endpoint = ?").bind(s.endpoint).run();
     }
   }
   await env.DB.prepare("DELETE FROM sessions WHERE expires_at < ?").bind(Date.now()).run();

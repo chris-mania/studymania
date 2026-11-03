@@ -1,5 +1,5 @@
 // Study Mania service worker: offline app shell + daily reminder notifications.
-const CACHE = "sm-v6";
+const CACHE = "sm-v7";
 const SHELL = ["/", "/index.html", "/styles.css", "/app.js", "/prompt.js", "/shared.mjs", "/local.mjs", "/manifest.webmanifest", "/icons/icon-192.png", "/logo-light.png", "/logo-dark.png"];
 
 self.addEventListener("install", (e) => {
@@ -26,10 +26,10 @@ self.addEventListener("fetch", (e) => {
 self.addEventListener("push", (e) => {
   e.waitUntil((async () => {
     let msg = { title: "📚 Time for today's study", body: "One quick lesson keeps your streak alive." };
-    try {
-      const r = await fetch("/api/nudge", { credentials: "same-origin" });
-      if (r.ok) msg = await r.json();
-    } catch {}
+    try { if (e.data) msg = { ...msg, ...e.data.json() }; } // the message comes inside the notification
+    catch {
+      try { const r = await fetch("/api/nudge", { credentials: "same-origin" }); if (r.ok) msg = await r.json(); } catch {}
+    }
     await self.registration.showNotification(msg.title, {
       body: msg.body, icon: "/icons/icon-192.png", badge: "/icons/badge-96.png", tag: "daily", renotify: true,
     });
