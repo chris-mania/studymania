@@ -949,6 +949,7 @@ route(/^\/s\/([\w-]+)\/(next|review|quiz|lesson|misses)(?:\/(\d+))?$/, async (id
         <div class="bar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><i style="width:${pct}%"></i></div>
         <span class="combo">${S.combo >= 3 ? `🔥${S.combo}` : ""}</span></div>
       ${label ? `<div class="kicker">${label}</div>` : ""}${inner}</div>`;
+    window.scrollTo(0, 0); // every new question starts at the top, progress bar in view
     $("x").onclick = quit;
   }
   async function quit() {
@@ -999,7 +1000,9 @@ route(/^\/s\/([\w-]+)\/(next|review|quiz|lesson|misses)(?:\/(\d+))?$/, async (id
     $("fb").innerHTML = `<div class="feedback ${ok ? "ok" : "no"}"><h3>${ok ? praise : "Not quite"}</h3>
       ${ok ? (k.hook ? `<p class="small">${esc(k.hook)}</p>` : "") : `<p><b>${esc(k.term)}</b>: ${esc(k.simple)}</p>${k.confuse ? `<p class="small">${esc(k.confuse)}</p>` : ""}<p class="small muted">It'll come back in a moment.</p>`}
       <button class="btn ${ok ? "good" : "bad"} block" id="cont">Continue</button></div>`;
-    const c = $("cont"); c.focus({ preventScroll: true }); c.scrollIntoView({ block: "end", behavior: "smooth" });
+    // The panel is pinned to the bottom of the screen, so nothing scrolls. Leave room under the answers for it.
+    const c = $("cont"), fb = app.querySelector(".feedback"); c.focus({ preventScroll: true });
+    app.querySelector(".sess").style.paddingBottom = fb.offsetHeight + 16 + "px";
     c.onclick = () => { S.i++; next(); };
   }
   async function finish() {
@@ -1107,6 +1110,7 @@ route(/^\/exam\/([\w-]+)$/, async (id) => {
     };
     if (endAt) { timerId = setInterval(tick, 1000); cleanupFns.push(() => clearInterval(timerId)); }
     const show = () => {
+      window.scrollTo(0, 0);
       const q = qs[i];
       app.innerHTML = `<div class="sess">
         <div class="sesstop"><button class="iconbtn" id="x" aria-label="Quit">✕</button><div class="bar"><i style="width:${(i / qs.length) * 100}%"></i></div>
