@@ -1487,7 +1487,15 @@ async function pushUI() {
     st.textContent = `On. On days you haven't studied yet, you'll get a nudge at ${fmt(h)}${h2 !== null ? `, and one more at ${fmt(h2)} if you still haven't` : ""}.`;
     test.hidden = false;
   }
-  else if (Notification.permission === "denied") st.textContent = "Notifications are blocked for Study Mania. Turn them on in your phone's settings, then come back.";
+  else if (Notification.permission === "denied") {
+    const ua = navigator.userAgent;
+    const how = /iPhone|iPad|iPod/.test(ua)
+      ? "Open the <b>Settings</b> app → <b>Notifications</b> → <b>Study Mania</b> → turn on <b>Allow Notifications</b>. Not in the list? Delete Study Mania from your home screen, add it again from Safari, open it and tap turn on."
+      : /Android/.test(ua)
+      ? "Press and hold the Study Mania icon → <b>App info</b> (ⓘ) → <b>Notifications</b> → turn on. Or in Chrome: ⋮ → <b>Settings</b> → <b>Site settings</b> → <b>Notifications</b> → studymania.app → <b>Allow</b>."
+      : "Click the icon left of studymania.app in the address bar → set <b>Notifications</b> to <b>Allow</b>, then reload.";
+    st.innerHTML = "<b>Notifications are blocked.</b> To turn them on: " + how;
+  }
   else { st.textContent = "Get one nudge a day so you don't break your streak."; on.hidden = false; }
   on.onclick = enablePush;
   test.onclick = async () => {
