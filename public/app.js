@@ -200,11 +200,11 @@ function authView(mode, { upgrade } = {}) {
     ${upgrade ? `<div class="topbar"><a class="iconbtn" href="#/settings" aria-label="Back">‹</a><span></span></div>` : `
     <div class="hero">
       <span class="logo" role="img" aria-label="Study Mania"><img class="lg-light" src="/logo-light.png" alt=""><img class="lg-dark" src="/logo-dark.png" alt=""></span>
-      <p class="muted">Turn your class notes into bite-size lessons. Do one or two a day, and walk into the exam already knowing it.</p>
+      <p class="muted">Turn your class notes or slides into bite-size lessons. Do one or two a day, and walk into the exam already knowing it.</p>
       <p class="notice small" style="margin:0">📲 <b style="display:inline">Best on your phone.</b> After you sign up, add Study Mania to your home screen and turn on reminders. <a href="#" id="w-how" style="font-weight:700">How?</a></p>
     </div>
     <div class="how card">
-      <div><i>1</i><p>Copy our prompt and paste it with your notes into any AI: ChatGPT, Claude, Gemini, Grok.</p></div>
+      <div><i>1</i><p>Copy our prompt and give it your notes or slides in any AI: ChatGPT, Claude, Gemini, Grok.</p></div>
       <div><i>2</i><p>Paste the AI's reply back here. It becomes lessons, quizzes and practice exams.</p></div>
       <div><i>3</i><p>Do a little each day, keep your streak, and ace the exam.</p></div>
     </div>`}
@@ -550,7 +550,7 @@ route(/^\/$/, () => {
       <div class="week">${days.map((d) => `<div class="dayc ${hit.has(d) ? "hit" : ""} ${d === todayStr() ? "now" : ""}"><i>${hit.has(d) ? "🔥" : ""}</i>${"SMTWTFS"[new Date(d + "T12:00").getDay()]}</div>`).join("")}</div>
     </section>
     ${back}
-    ${courses.filter((c) => c.plan.more?.overdue).map((c) => `<div class="notice">📥 <b style="display:inline">New notes for ${esc(c.name)} yet?</b> Add them so your plan stays right. <a href="#/add/${c.id}" style="font-weight:700">Add notes</a> · <a href="#/c/${c.id}">That's everything</a></div>`).join("")}
+    ${courses.filter((c) => c.plan.more?.overdue).map((c) => `<div class="notice">📥 <b style="display:inline">New notes or slides for ${esc(c.name)} yet?</b> Add them so your plan stays right. <a href="#/add/${c.id}" style="font-weight:700">Add them</a> · <a href="#/c/${c.id}">That's everything</a></div>`).join("")}
     ${courses.reduce((a, c) => a + (c.plan.todayLeft || 0), 0) > 6 ? `<div class="notice warn"><b>Heads up: your subjects add up to ${courses.reduce((a, c) => a + (c.plan.todayLeft || 0), 0)} lessons today.</b> Exams close together? Start one earlier or add review days in its plan.</div>` : ""}
     ${setupCard()}
     ${nx ? `<a class="upnext" href="#${nextHref(nx)}" style="--sc:${colorVar(nx.c.color)}">
@@ -558,7 +558,7 @@ route(/^\/$/, () => {
         <span class="un-title">${esc(nx.title)}</span>
         <span class="un-sub">${esc(nx.sub)}</span>
         <span class="btn primary block un-btn">${G.done ? "Bonus round" : did ? "Keep going" : "Start"}</span>
-      </a>${nx.k === "review" ? `<button class="btn ghost small" id="skip-rev" style="margin-top:-6px">Skip review for today. Go to a lesson instead</button>` : ""}` : !courses.length ? `<a class="upnext" href="#/add"><span class="kicker">Get started</span><span class="un-title">Add your first subject</span><span class="un-sub">Paste your notes into any AI with our prompt. Takes about 2 minutes.</span><span class="btn primary block un-btn">Add a subject</span></a>` : ""}
+      </a>${nx.k === "review" ? `<button class="btn ghost small" id="skip-rev" style="margin-top:-6px">Skip review for today. Go to a lesson instead</button>` : ""}` : !courses.length ? `<a class="upnext" href="#/add"><span class="kicker">Get started</span><span class="un-title">Add your first subject</span><span class="un-sub">Give your notes or slides to any AI with our prompt. Takes about 2 minutes.</span><span class="btn primary block un-btn">Add a subject</span></a>` : ""}
     ${items.length ? `<section class="stack" style="gap:8px"><h3>Also today</h3>
       ${items.map((x) => `<a class="todo" href="#${x.lessons ? `/s/${x.c.id}/next` : x.due ? `/s/${x.c.id}/review` : `/exam/${x.c.id}`}" style="--sc:${colorVar(x.c.color)}">
         <span class="dot"></span><div class="grow"><b>${esc(x.c.name)}</b><span class="muted small">${[x.lessons ? plural(x.lessons, "lesson") : "", x.due ? `${x.due} to review` : "", x.review && !x.lessons && !x.due ? "Practice exam" : ""].filter(Boolean).join(" · ")}</span></div><span class="go-arrow">›</span></a>`).join("")}
@@ -667,7 +667,7 @@ function planFormHTML(s) {
         <div class="row"><span class="muted small">or</span><input type="number" id="p-fin" min="1" max="365" value="${esc(s.finish_days)}" style="max-width:110px"><span class="muted small">days</span></div></div>` : ""}
     ${s.mode === "none" ? `<p class="muted small">Go lesson by lesson at your own pace. We'll show when you'll finish at 1 a day, and you can always do more.</p>` : ""}
 
-    <div class="field">${label("Do you have all your notes for this?")}
+    <div class="field">${label("Do you have all your notes or slides for this?")}
       ${seg("notes", ["all", "more"], s.notes, (v) => (v === "all" ? "✅ Yes, all of them" : "⏳ Not yet, more are coming"))}</div>
     ${s.notes === "more" ? `<div class="morebox stack">
       <div class="field">${label("How much do you have so far?")}
@@ -675,12 +675,12 @@ function planFormHTML(s) {
           <button type="button" class="btn ghost small" data-count="unsure" style="align-self:flex-start;padding:4px 0">Not sure how many?</button>`
         : `${seg("share", [0.5, 0.75, 0.9], s.share, (v) => ({ 0.5: "About half", 0.75: "Most of it", 0.9: "Almost all" }[v]))}
           <button type="button" class="btn ghost small" data-count="count" style="align-self:flex-start;padding:4px 0">I know the numbers</button>`}</div>
-      <div class="field">${label("When do you usually get new notes?")}
+      <div class="field">${label("When do you usually get new notes or slides?")}
         ${seg("every", ["class", "week", "unsure"], s.every, (v) => ({ class: "After every class", week: "Once a week", unsure: "Not sure" }[v]))}</div>
       <p class="small" id="p-err" style="color:var(--bad)" ${planProblem(s) ? "" : "hidden"}>${esc(planProblem(s) || "")}</p>
-      <div class="notice small">No problem. Add what you have now. We'll guess how much is coming and spread it all out so there's no pile-up at the end. When you get the rest, tap <b style="display:inline">+ Add more notes</b> on this subject and your plan updates.</div>
+      <div class="notice small">No problem. Add what you have now. We'll guess how much is coming and spread it all out so there's no pile-up at the end. When you get the rest, tap <b style="display:inline">+ Add notes or slides</b> on this subject and your plan updates.</div>
     </div>` : ""}
-    <p class="muted small">💡 Only paste notes for <b style="display:inline">this</b> exam. Tip: make one subject per exam (like "Consumer Behavior · Exam 2").</p>
+    <p class="muted small">💡 Only add notes or slides for <b style="display:inline">this</b> exam. Tip: make one subject per exam (like "Consumer Behavior · Exam 2").</p>
   </div>`;
 }
 function wirePlanForm(root, s, redraw) {
@@ -742,18 +742,18 @@ route(/^\/add(?:\/([\w-]+))?$/, (addTo) => {
       <button class="btn primary block" id="a-next">Next</button>
       <button class="btn ghost" id="a-sample">Or try a sample subject first</button>`;
     if (S.step === 2) body = `
-      <h1>${existing ? `Add notes to ${esc(existing.name)}` : "Turn your notes into lessons"}</h1>
+      <h1>${existing ? `Add notes or slides to ${esc(existing.name)}` : "Turn your notes or slides into lessons"}</h1>
       <div class="card stack">
         <p><b>1.</b> Copy the Study Mania prompt.</p>
         <button class="btn primary block" id="a-copy">Copy prompt</button>
-        <p><b>2.</b> Open any AI. Paste the prompt, then paste your notes right after it (or attach your slides or PDF) and send.</p>
+        <p><b>2.</b> Open any AI and paste the prompt. Then, right after it, <b>paste your notes</b> or <b>attach your slides</b> (PowerPoint or PDF), and send.</p>
         <div class="ais">
           <a class="btn sm" href="https://chatgpt.com/" target="_blank" rel="noopener">ChatGPT</a>
           <a class="btn sm" href="https://claude.ai/new" target="_blank" rel="noopener">Claude</a>
           <a class="btn sm" href="https://gemini.google.com/app" target="_blank" rel="noopener">Gemini</a>
           <a class="btn sm" href="https://grok.com/" target="_blank" rel="noopener">Grok</a>
         </div>
-        <p class="muted small">Lots of notes? The AI sends them in parts. Say NEXT, and paste all the parts together in the next step. Only have this week's chapters? That's fine. Add the next ones whenever you get them.</p>
+        <p class="muted small">Slides won't upload? Save them as a PDF first (in PowerPoint: File → Save As → PDF). Lots of material? The AI sends it in parts. Say NEXT, and paste all the parts together in the next step. Only have this week's chapters? That's fine. Add the next ones whenever you get them.</p>
       </div>
       <button class="btn block" id="a-next">I have the reply</button>
       ${existing ? "" : `<button class="btn ghost" id="a-back">Back</button>`}`;
@@ -849,10 +849,10 @@ route(/^\/c\/([\w-]+)$/, async (id) => {
     <div class="stack" style="--sc:${colorVar(c.color)}">
       <div class="stack" style="gap:8px"><h1>${esc(c.name)}</h1>${examText(c) ? `<div><span class="pill">${examText(c)}</span></div>` : ""}</div>
       ${p.more ? `<div class="card stack morecard ${p.more.overdue ? "due" : ""}">
-        <div><div class="kicker">${p.more.overdue ? "📥 Got your new notes yet?" : "⏳ More notes coming"}</div>
+        <div><div class="kicker">${p.more.overdue ? "📥 Got your new notes or slides yet?" : "⏳ More notes or slides coming"}</div>
           <p style="margin-top:4px">${p.more.total ? `You have <b>${p.more.have} of ${p.more.total}</b> lectures or chapters.` : "You have some of your notes so far."} ${p.more.overdue ? "They were expected around " + niceDate(p.more.next) + "." : "Next ones expected around <b>" + niceDate(p.more.next) + "</b>."}</p>
           <p class="muted small">Your plan already saves room for about ${plural(p.more.future, "lesson")} still coming.</p></div>
-        <div class="row"><a class="btn primary grow" href="#/add/${c.id}">+ Add notes</a><button class="btn grow" id="c-alldone">That's everything</button></div>
+        <div class="row"><a class="btn primary grow" href="#/add/${c.id}">+ Add notes or slides</a><button class="btn grow" id="c-alldone">That's everything</button></div>
       </div>` : ""}
       <div class="card stack">
         <div class="spread"><div class="grow"><div class="kicker">Your plan</div><p style="margin-top:2px"><b>${esc(p.label)}</b></p>
@@ -878,8 +878,8 @@ route(/^\/c\/([\w-]+)$/, async (id) => {
         </div>`;
       }).join("")}
       <div class="card stack" style="margin-top:8px">
-        <a class="btn primary block" href="#/add/${c.id}">+ Add more notes</a>
-        <p class="muted small">Got the next chapters? Add them here. They join this subject and your plan updates.</p>
+        <a class="btn primary block" href="#/add/${c.id}">+ Add more notes or slides</a>
+        <p class="muted small">Got new notes or slides? Add them here. They join this subject and your plan updates.</p>
         <button class="btn ghost" id="c-mark">Mark lessons I already know</button>
         <button class="btn ghost danger" id="c-del">Delete this subject</button>
       </div>
