@@ -702,9 +702,15 @@ function wirePlanForm(root, s, redraw) {
 // Reads what the AI sent back. Handles several blocks pasted together (after NEXT),
 // and a reply that got cut off mid-card: every complete card is kept.
 function parseReply(text) {
-  let t = String(text || "").trim();
+  let t = String(text || "").replace(/[\u00a0\u2007\u202f]/g, " ").replace(/[\u200b-\u200d\u2060\ufeff]/g, "").trim(); // hidden phone/Word characters
   if (!t) throw new Error("Paste the AI's reply first.");
-  t = t.replace(/[“”]/g, '"').replace(/[‘’]/g, "'");
+  // Python-style 'single quotes' around keys and text: swap only the quotes that frame them.
+  if (!/"cards"\s*:/.test(t) && /'cards'\s*:/.test(t)) t = t.replace(/(?<=[{\[,:]\s*)'|'(?=\s*[:,}\]])/g, '"');
+  // Some apps copy the code "escaped" (\" everywhere). Undo that.
+  if (!/"cards"\s*:/.test(t) && /\\"cards\\"\s*:/.test(t)) t = t.replace(/\\"/g, '"').replace(/\\n/g, "\n");
+  // Curly quotes inside text (like “PIE PP”) are fine JSON, so leave them. Only if an AI used curly quotes AS the JSON quotes
+  // (no straight "subject" anywhere) do we swap them.
+  if (!/"(subject|cards)"/.test(t)) t = t.replace(/[“”]/g, '"').replace(/[‘’]/g, "'");
   // Each block starts with {"subject": ... or a ``` fence. Read each one on its own.
   const cuts = [0];
   for (const m of t.matchAll(/```|\{\s*"subject"\s*:/g)) if (m.index > 0) cuts.push(m.index);
@@ -730,22 +736,67 @@ function parseReply(text) {
     }
     return { items, cut: true };
   };
-  const parse = (str) => { try { return JSON.parse(str.replace(/,\s*([}\]])/g, "$1")); } catch { return null; } };
+  const tryParse = (str) => { try { return JSON.parse(str.replace(/,\s*([}\]])/g, "$1")); } catch { return null; } };
+  // Fallbacks for small AI slip-ups: a curly quote used as a JSON quote, or a raw line break inside text.
+  // Escape stray " inside text: a quote only ends the text if , : } ] or the end comes right after it.
+  const fixQuotes = (str) => {
+    let out = "", inStr = false;
+    for (let i = 0; i < str.length; i++) {
+      const c = str[i];
+      if (!inStr) { if (c === '"') inStr = true; out += c; continue; }
+      if (c === "\\") { out += c + (str[i + 1] || ""); i++; continue; }
+      if (c === "\n" || c === "\r") { out += " "; continue; }
+      if (c === '"') { const nx = str.slice(i + 1).match(/^\s*(.)/); if (!nx || ",:}]".includes(nx[1])) { inStr = false; out += c; } else out += '\\"'; continue; }
+      out += c;
+    }
+    return out;
+  };
+  const curlyAsJson = (str) => str.replace(/(?<=(?:^|[{\[,:])\s*)[“”]|[“”](?=\s*[:,}\]])/g, '"');
+  const noComments = (str) => str.replace(/^\s*\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
+  const singleQuoted = (str) => (str.includes('"') ? str : str.replace(/'/g, '"'));
+  const parse = (str) => tryParse(str) ?? tryParse(curlyAsJson(str)) ?? tryParse(noComments(str)) ?? tryParse(singleQuoted(str))
+    ?? tryParse(fixQuotes(curlyAsJson(noComments(str))));
 
-  let subject = "", cards = [], questions = [], cut = false, broken = 0;
+  let subject = "", cards = [], questions = [], cut = false, broken = 0; const badTerms = [];
+  const meta = { parts: new Set(), partsTotal: 0, cardsTotal: 0, type: "", total: 0, sections: [], unreadable: [] };
+  const num = (seg, key) => +((seg.match(new RegExp(`"${key}"\\s*:\\s*(\\d+)`)) || [])[1] || 0);
   for (const seg of segs) {
     subject ||= (seg.match(/"subject"\s*:\s*"([^"]*)"/) || [])[1] || "";
+    if (num(seg, "part")) meta.parts.add(num(seg, "part"));
+    meta.partsTotal = Math.max(meta.partsTotal, num(seg, "parts_total"));
+    meta.cardsTotal = Math.max(meta.cardsTotal, num(seg, "cards_total"));
+    const sm = seg.match(/"source"\s*:\s*\{/);
+    if (sm) {
+      const src = parse(readArray("[" + seg.slice(sm.index + sm[0].length - 1), 1).items[0] || "") || {};
+      meta.type ||= String(src.type || "").toLowerCase();
+      meta.total = Math.max(meta.total, +src.total || 0);
+      if (Array.isArray(src.sections) && src.sections.length > meta.sections.length) meta.sections = src.sections.map(String);
+      if (Array.isArray(src.unreadable)) meta.unreadable.push(...src.unreadable.map(String));
+    }
     for (const [key, list] of [["cards", cards], ["questions", questions]]) {
       const m = seg.match(new RegExp(`"${key}"\\s*:\\s*\\[`));
       if (!m) continue;
       const r = readArray(seg, m.index + m[0].length);
-      if (r.cut) cut = true;
-      for (const item of r.items) { const o = parse(item); if (o) list.push(o); else broken++; }
+      if (key === "cards") cut = r.cut; // only the LAST pasted block decides; a continuation pasted after fixes it
+      for (const item of r.items) {
+        const o = parse(item);
+        if (o) list.push(o);
+        else { broken++; if (key === "cards") badTerms.push(((item.match(/"term"\s*:\s*"([^"]{1,80})/) || [])[1] || "").trim()); }
+      }
     }
   }
   cards = cards.filter((c) => c && c.term && (c.simple || c.answer || c.definition));
+  // The same reply pasted twice: keep one copy of each card and question.
+  const seen = new Set(), seenQ = new Set(); let repeats = 0;
+  cards = cards.filter((c) => { const k = String(c.term).toLowerCase().trim(); if (seen.has(k)) { repeats++; return false; } seen.add(k); return true; });
+  questions = questions.filter((q) => { const k = String(q && q.question || "").toLowerCase().trim(); if (!k || seenQ.has(k)) return false; seenQ.add(k); return true; });
+  if (!cards.length && /You are making study cards for Study Mania/.test(t)) throw new Error("That's the prompt, not the reply. Paste the prompt into the AI with your notes or slides, then copy what the AI sends back and paste that here.");
+  if (!cards.length && broken) throw new Error('The AI\'s reply has a typo we couldn\'t fix. Ask the AI: "Send that JSON again, valid JSON only." Then paste it.');
+  if (!cards.length && !/[{[]/.test(t)) throw new Error("The AI answered in words, not code" + (t.length < 300 ? `: "${t.slice(0, 200)}"` : ".") + " If it couldn't open your file, paste your notes as text instead, or try another AI. Then paste its reply here.");
   if (!cards.length) throw new Error(cut ? 'The reply got cut off before the first card finished. Ask the AI: "Send that again, complete." Then paste it.' : "No cards found in that reply. Copy the whole code block the AI made, including the { } brackets.");
-  return { subject, cards, questions, cut, broken, lastTerm: cards[cards.length - 1].term };
+  const lastN = Math.max(cards.length, ...cards.map((c) => +c.n || 0));
+  if (meta.cardsTotal && cards.length >= meta.cardsTotal) cut = false;
+  return { subject, cards, questions, cut, broken, badTerms: badTerms.filter(Boolean), repeats, meta, lastN, lastTerm: cards[cards.length - 1].term };
 }
 
 route(/^\/add(?:\/([\w-]+))?$/, (addTo) => {
@@ -783,9 +834,13 @@ route(/^\/add(?:\/([\w-]+))?$/, (addTo) => {
       <p class="err" id="a-err" hidden></p>
       ${S.parsed ? `<div class="card stack"><div class="spread"><h3>${plural(S.parsed.cards.length, "card")} · ${plural(S.parsed.questions.length, "exam question")}</h3><span class="pill ok">Looks good</span></div>
         <p class="muted small">${[...new Set(S.parsed.cards.map((c) => c.topic || "General"))].map(esc).join(" · ")}</p>
-        ${S.parsed.cut ? `<div class="notice warn small"><b>The reply got cut off</b>, but all ${S.parsed.cards.length} complete cards are saved. To get the rest, tell the AI:
-          <div class="copyline"><span id="a-cont">Continue right after "${esc(S.parsed.lastTerm)}" in the same JSON format.</span><button type="button" class="btn sm" id="a-contcopy">Copy</button></div>
-          Then paste its reply at the end of the box above and tap Check reply again. Or just save these now and add the rest later.</div>` : ""}
+        ${(() => { const C = coverageCheck(S.parsed); return `
+          ${C.ok.map((t) => `<p class="small" style="color:var(--good);font-weight:700">✅ ${esc(t)}</p>`).join("")}
+          ${C.warns.map((w, i) => `<div class="notice warn small">⚠️ ${w.text}${w.copy ? `<div class="copyline"><span id="cv-${i}">${esc(w.copy)}</span><button type="button" class="btn sm" data-copy="cv-${i}">Copy</button></div>Paste the AI's answer at the end of the box above, then tap <b style="display:inline">Check reply</b> again.` : ""}</div>`).join("")}
+          <details class="small"><summary style="cursor:pointer;font-weight:700">Want to be sure nothing was skipped?</summary>
+            <p class="muted" style="margin:8px 0 0">Send the AI this. Anything new it finds gets added, and repeats are skipped automatically.</p>
+            <div class="copyline"><span id="cv-check">${esc(C.check)}</span><button type="button" class="btn sm" data-copy="cv-check">Copy</button></div></details>
+          ${C.warns.length ? `<p class="muted small">You can also save now and add the rest later with <b style="display:inline">+ Add notes or slides</b>.</p>` : ""}`; })()}
         <div class="preview">${S.parsed.cards.slice(0, 40).map((c) => `<div><b>${esc(c.term)}</b>: ${esc(c.simple || c.answer)}</div>`).join("")}</div></div>
         ${existing && existing.as_you_go && !existing.notes_done ? `<div class="card stack">
           ${existing.more_total ? `<div class="field"><span style="font-weight:700;font-size:15px">How many lectures or chapters is this?</span>
@@ -824,7 +879,7 @@ route(/^\/add(?:\/([\w-]+))?$/, (addTo) => {
         try { S.raw = ta.value; S.parsed = parseReply(ta.value); draw(); }
         catch (e) { $("a-err").textContent = e.message; $("a-err").hidden = false; }
       };
-      if ($("a-contcopy")) $("a-contcopy").onclick = async (e) => { try { await navigator.clipboard.writeText($("a-cont").textContent); e.target.textContent = "Copied ✓"; } catch { e.target.textContent = "Select it"; } };
+      app.querySelectorAll("[data-copy]").forEach((b) => (b.onclick = async () => { try { await navigator.clipboard.writeText($(b.dataset.copy).textContent); b.textContent = "Copied ✓"; } catch { const r = document.createRange(); r.selectNodeContents($(b.dataset.copy)); getSelection().removeAllRanges(); getSelection().addRange(r); b.textContent = "Selected"; } }));
             app.querySelectorAll("[data-addn]").forEach((b) => (b.onclick = () => { S.addN = +b.dataset.addn; const raw = $("a-paste").value; draw(); $("a-paste").value = raw; }));
       if ($("a-last")) $("a-last").onchange = (e) => (S.last = e.target.checked);
       if ($("a-save")) $("a-save").onclick = async () => {
@@ -849,6 +904,54 @@ route(/^\/add(?:\/([\w-]+))?$/, (addTo) => {
   };
   draw();
 });
+
+// Compares what the AI says it read (slides, pages or headings) with the cards it sent,
+// so skipped material shows up with the exact words to ask for it.
+function coverageCheck(P) {
+  const m = P.meta, warns = [], next = P.lastN + 1, ok = [];
+  const fmt = (a) => a.map(([x, y]) => (x === y ? `${x}` : `${x}–${y}`)).join(", ");
+  if (P.broken) {
+    const names = P.badTerms || [];
+    warns.push({ text: `<b>${P.broken} card${P.broken > 1 ? "s" : ""} had a typo</b> and couldn't be read. The rest are fine.`,
+      copy: names.length ? `Send these cards again as one JSON code block, same format, valid JSON only: ${names.join(", ")}.` : "Some cards had a JSON typo. Send the whole JSON again, valid JSON only." });
+  }
+  if (P.repeats) ok.push(`Skipped ${P.repeats} repeat card${P.repeats > 1 ? "s" : ""} (pasted twice)`);
+  if (P.cut) warns.push({ text: `<b>The reply got cut off</b>, but all ${P.cards.length} finished cards are saved.`, copy: `Continue right after card ${P.lastN} ("${P.lastTerm}"), same JSON format.` });
+  if (m.partsTotal > 1 && m.parts.size < m.partsTotal) {
+    const missing = Array.from({ length: m.partsTotal }, (_, i) => i + 1).filter((x) => !m.parts.has(x));
+    const have = [...m.parts].sort();
+    warns.push({ text: `<b>You have part${have.length > 1 ? "s" : ""} ${have.join(" & ") || 1} of ${m.partsTotal}.</b> Say NEXT to the AI and paste ${missing.length === 1 ? "the last part" : "the other parts"} in the box too.`, copy: "NEXT" });
+  }
+  // One clear next step at a time: a cut-off reply or a missing part comes first,
+  // since getting the rest usually fills any gaps too.
+  const busy = warns.length > 0;
+  const isNum = m.type === "slides" || m.type === "pages";
+  if (busy) { /* skip gap checks until the rest is in */ }
+  else if (isNum && m.total > 0) {
+    const word = m.type === "pages" ? "Page" : "Slide";
+    const covered = new Set();
+    for (const c of P.cards) for (const r of String(c.from || "").matchAll(/(\d+)(?:\s*[-–]\s*(\d+))?/g)) { const a = +r[1], b = +(r[2] || r[1]); for (let k = a; k <= Math.min(b, a + 50); k++) covered.add(k); }
+    const unread = new Set(m.unreadable.flatMap((u) => (String(u).match(/\d+/g) || []).map(Number)));
+    // Runs of slides with no cards. Short gaps (agendas, title slides) are normal; flag long ones and the end.
+    const runs = []; let st = null;
+    for (let k = 1; k <= m.total + 1; k++) {
+      const empty = k <= m.total && !covered.has(k) && !unread.has(k);
+      if (empty && st === null) st = k; else if (!empty && st !== null) { runs.push([st, k - 1]); st = null; }
+    }
+    const big = runs.filter(([a, b]) => b - a + 1 >= Math.max(5, Math.round(m.total * 0.15)) || (b === m.total && b - a + 1 >= Math.max(3, Math.round(m.total * 0.08))));
+    if (big.length) warns.push({ text: `<b>No cards from ${word.toLowerCase()}s ${fmt(big)}</b> (of ${m.total}). The AI may have stopped early or skipped them.`, copy: `Make cards for ${word.toLowerCase()}s ${fmt(big)} only, same JSON format. Start numbering at ${next}.` });
+    else if (covered.size) ok.push(`Covers ${word.toLowerCase()}s 1–${m.total}`);
+  } else if (m.sections.length) {
+    const norm = (x) => String(x).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    const froms = P.cards.map((c) => norm(c.from) + " | " + norm(c.topic));
+    const miss = m.sections.filter((sec) => { const n = norm(sec); return n && !froms.some((f) => f.includes(n) || n.includes(f.split(" | ")[0] || "@@")); });
+    if (miss.length) warns.push({ text: `<b>No cards from ${miss.length === 1 ? "this section" : "these sections"}:</b> ${miss.map(esc).join(", ")}. The AI may have skipped ${miss.length === 1 ? "it" : "them"}.`, copy: `Make cards for only these parts of my notes, same JSON format: ${miss.join("; ")}. Start numbering at ${next}.` });
+    else ok.push(`Covers all ${m.sections.length} sections of your notes`);
+  }
+  if (m.unreadable.length) warns.push({ text: `<b>The AI couldn't read:</b> ${m.unreadable.map(esc).join(", ")}. If those have important stuff, paste their text in instead.` });
+  if (!warns.length && m.cardsTotal > P.cards.length) warns.push({ text: `<b>The AI planned ${m.cardsTotal} cards but sent ${P.cards.length}.</b>`, copy: `You planned ${m.cardsTotal} cards but sent ${P.cards.length}. Send the missing ones, same JSON format, starting at ${next}.` });
+  return { ok, warns, check: `Check your work: go back through ALL of my notes and make cards for anything important you skipped. Same JSON format, only the new cards, numbering from ${next}. If you skipped nothing, reply with {"cards": []}.` };
+}
 
 function promptSheet() {
   const el = sheet(`<h2>Copy this prompt</h2><p class="muted">Press and hold to select it all, then copy.</p>
