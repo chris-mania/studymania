@@ -1,5 +1,5 @@
 // No-account mode: the same API as the server, but everything lives in this browser.
-import { addDays, daysBetween, isDay, nextReview, summarize, cleanCard, cleanQuestion } from "./shared.mjs";
+import { addDays, daysBetween, isDay, nextReview, summarize, cleanCard, cleanQuestion, mergeMissed } from "./shared.mjs";
 
 const KEY = "sm-guest-data";
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
@@ -88,6 +88,11 @@ export async function localApi(path, method, body, day) {
     if (!sub && method === "PATCH") { Object.assign(c, planFields(b, c)); if (b.name) c.name = String(b.name).slice(0, 80); save(d); return { ok: true }; }
     if (!sub && method === "DELETE") { d.courses = d.courses.filter((x) => x !== c); save(d); return { ok: true }; }
     if (sub === "/cards" && method === "POST") { const r = addContent(c, b.cards, b.questions, day); save(d); return r; }
+    if (sub === "/missed" && method === "POST") {
+      const ids = new Set(c.cards.map((k) => k.id));
+      c.missed = mergeMissed(c.missed, (b.add || []).filter((x) => ids.has(String(x))), b.remove).filter((x) => ids.has(x));
+      save(d); return { missed: c.missed };
+    }
     if (sub === "/known" && method === "POST") {
       for (const id of b.card_ids || []) {
         if (b.known) { const p = c.progress[id]; c.progress[id] = p?.learned_at ? { ...p, box: Math.max(p.box || 0, 2) } : { box: 2, due: addDays(day, 2), learned_at: addDays(day, -1) }; }

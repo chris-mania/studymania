@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS courses (
   more_every TEXT,                       -- when new notes usually come: class / week / unsure
   more_share REAL,                       -- if unsure of counts: rough share you have (0.5, 0.75, 0.9)
   notes_done INTEGER DEFAULT 0,          -- 1 = "that's everything"
+  missed TEXT,                           -- JSON list of card ids missed in cram/exams (this subject only)
   color INTEGER DEFAULT 0,
   created_at TEXT DEFAULT (datetime('now'))
 );

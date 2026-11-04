@@ -1,7 +1,7 @@
 // Study Mania API (Cloudflare Worker + D1)
 import { sendPush } from "./webpush.js";
 import { ensureDb } from "./migrate.js";
-import { addDays, daysBetween, isDay, nextReview, summarize, cleanCard, cleanQuestion, weekStart, secondReminderHour } from "../public/shared.mjs";
+import { addDays, daysBetween, isDay, nextReview, summarize, cleanCard, cleanQuestion, weekStart, secondReminderHour, mergeMissed } from "../public/shared.mjs";
 
 const SESSION_DAYS = 60;
 const MAX_CARDS_PER_COURSE = 800;
@@ -429,6 +429,13 @@ async function api(req, env, url) {
       await env.DB.batch(["progress", "cards", "questions", "exams"].map((t) => env.DB.prepare(`DELETE FROM ${t} WHERE course_id = ?`).bind(course.id))
         .concat(env.DB.prepare("DELETE FROM courses WHERE id = ?").bind(course.id)));
       return json({ ok: true });
+    }
+    if (sub === "/missed" && method === "POST") {
+      // Words you got wrong in this subject (cram, speed round, practice exam). Merged here so two devices don't overwrite each other.
+      const b = await readBody(req), ids = new Set((await env.DB.prepare("SELECT id FROM cards WHERE course_id = ?").bind(course.id).all()).results.map((r) => r.id));
+      const list = mergeMissed(course.missed, (b.add || []).filter((x) => ids.has(String(x))), b.remove).filter((x) => ids.has(x));
+      await env.DB.prepare("UPDATE courses SET missed = ? WHERE id = ?").bind(JSON.stringify(list), course.id).run();
+      return json({ missed: list });
     }
     if (sub === "/cards" && method === "POST") {
       const b = await readBody(req);

@@ -312,3 +312,13 @@ details summary{list-style:revert}
 .mchip.sel{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 18%,var(--bg))}
 .mchip.right{border-color:var(--good);background:var(--good-soft)} .mchip.wrong{border-color:var(--bad);background:var(--bad-soft)}
 .mchip:disabled{cursor:default}
+/* Cram & review section */
+.cramgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.cramtile{display:flex;flex-direction:column;gap:2px;text-align:left;text-decoration:none;color:var(--fg);background:var(--raised);border:2px solid var(--line);border-bottom-width:4px;border-radius:16px;padding:12px;font:inherit;cursor:pointer}
+.cramtile i{font-style:normal;font-size:22px;line-height:1.2}
+.cramtile b{font-size:15px}
+.cramtile span{font-size:13px;color:var(--muted)}
+.cramtile:active{transform:translateY(2px);border-bottom-width:2px}
+.cramtile.hot{border-color:var(--flame)} .cramtile.hot span{color:var(--flame);font-weight:700}
+.cramtile.off{opacity:.55}
+.timebar i{transition:width .25s linear}

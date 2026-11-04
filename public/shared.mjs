@@ -174,6 +174,7 @@ export function summarize(course, cards, progress, today) {
   return {
     id: course.id, name: course.name, color: course.color || 0, exam_date: course.exam_date || null,
     review_days: course.review_days ?? 3, finish_by: course.finish_by || null, as_you_go: course.as_you_go ? 1 : 0, keep_up_days: course.keep_up_days ?? 3,
+    missed: mergeMissed(course.missed, [], []).filter((id) => cards.some((k) => k.id === id)).length,
     more_total: course.more_total ?? null, more_have: course.more_have ?? null, more_every: course.more_every || null, more_share: course.more_share ?? null, notes_done: course.notes_done ? 1 : 0,
     total: cards.length, learned, due, strong, lessons: lessons.length, plan: p,
     next: (() => { const l = lessons.find((x) => !x.cards.every((c) => progress[c.id]?.learned_at)); return l ? { n: l.n, topic: l.topic, words: l.cards.length } : null; })(),
@@ -182,6 +183,15 @@ export function summarize(course, cards, progress, today) {
 
 // ---------- cleaning what the AI sent ----------
 const str = (v, max) => (typeof v === "string" ? v.trim().slice(0, max) : typeof v === "number" ? String(v) : "");
+// Missed-words list for ONE subject: add new misses, drop ones you got right. Newest first, max 500.
+export function mergeMissed(list, add, remove) {
+  let cur = list;
+  if (typeof cur === "string") { try { cur = JSON.parse(cur); } catch { cur = []; } }
+  if (!Array.isArray(cur)) cur = [];
+  const rm = new Set((Array.isArray(remove) ? remove : []).map(String));
+  const ad = (Array.isArray(add) ? add : []).map(String).filter((x) => !rm.has(x));
+  return [...new Set([...ad, ...cur.map(String)])].filter((x) => !rm.has(x)).slice(0, 500);
+}
 export function cleanCard(c) {
   if (!c || typeof c !== "object") return null;
   const term = str(c.term, 140);

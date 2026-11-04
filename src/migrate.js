@@ -1,6 +1,6 @@
 // Sets up / upgrades the database automatically the first time the app runs,
 // so nobody has to run database commands by hand. Safe to run again and again.
-const VERSION = 7;
+const VERSION = 8;
 const SCHEMA = [
  "CREATE TABLE IF NOT EXISTS users (\n  id TEXT PRIMARY KEY,\n  email TEXT NOT NULL UNIQUE,\n  username TEXT,                         \n  name TEXT,\n  pass_hash TEXT NOT NULL,\n  salt TEXT NOT NULL,\n  tz TEXT DEFAULT 'America/New_York',\n  remind_hour INTEGER DEFAULT 18,\n  daily_goal INTEGER DEFAULT 2,          \n  xp INTEGER DEFAULT 0,\n  streak INTEGER DEFAULT 0,\n  best_streak INTEGER DEFAULT 0,\n  last_study_day TEXT,                   \n  freezes INTEGER DEFAULT 0,             \n  lb_hidden INTEGER DEFAULT 0,           \n  last_nudge_day TEXT,\n  nudges_today INTEGER DEFAULT 0,                   \n  \n  sec_q1 TEXT, sec_a1 TEXT, sec_q2 TEXT, sec_a2 TEXT, sec_salt TEXT,\n  recover_fails INTEGER DEFAULT 0,\n  recover_lock_until INTEGER DEFAULT 0,\n  \n  reset_hash TEXT, reset_expires INTEGER DEFAULT 0,\n  created_at TEXT DEFAULT (datetime('now'))\n)",
  "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username)",
@@ -39,7 +39,8 @@ const UPGRADES = [
  "CREATE TABLE IF NOT EXISTS study_rounds (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, day TEXT NOT NULL)",
  "ALTER TABLE cards ADD COLUMN parts TEXT",
  "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username)",
- "CREATE INDEX IF NOT EXISTS idx_days_day ON days(day)"
+ "CREATE INDEX IF NOT EXISTS idx_days_day ON days(day)",
+ "ALTER TABLE courses ADD COLUMN missed TEXT"
 ];
 
 let ready = null;
