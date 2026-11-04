@@ -322,3 +322,7 @@ details summary{list-style:revert}
 .cramtile.hot{border-color:var(--flame)} .cramtile.hot span{color:var(--flame);font-weight:700}
 .cramtile.off{opacity:.55}
 .timebar i{transition:width .25s linear}
+/* small "try without an account" link at the top of the welcome page */
+.hero{position:relative}
+.guest-top{align-self:flex-end;background:none;border:1.5px solid var(--line);color:var(--muted);border-radius:999px;padding:5px 12px;font:700 13px/1.2 var(--body);cursor:pointer;margin-bottom:-4px}
+.guest-top:hover{color:var(--fg);border-color:var(--muted)}

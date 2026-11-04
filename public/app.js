@@ -187,8 +187,10 @@ async function render() {
   if (!r) return go("/");
   if (!r[2] && !ME) {
     try { await loadMe(); }
-    catch (e) { if (e.status === 401) return go("/welcome"); return offlineView(e); }
+    catch (e) { if (e.status === 401) { history.replaceState(null, "", "/"); return authView("signup"); } return offlineView(e); }
   }
+  // The welcome page lives at plain studymania.app, no "#/welcome" in the address bar.
+  if (h === "/welcome") history.replaceState(null, "", "/");
   r[1](...h.match(r[0]).slice(1));
 }
 const go = (h) => { if (location.hash === "#" + h) render(); else location.hash = h; };
@@ -214,6 +216,7 @@ function authView(mode, { upgrade } = {}) {
     app.innerHTML = `
     ${upgrade ? `<div class="topbar"><a class="iconbtn" href="#/settings" aria-label="Back">‹</a><span></span></div>` : `
     <div class="hero">
+      <button type="button" class="guest-top" id="guest">Try without an account ›</button>
       <span class="logo" role="img" aria-label="Study Mania"><img class="lg-light" src="/logo-light.png" alt=""><img class="lg-dark" src="/logo-dark.png" alt=""></span>
       <p class="muted">Turn your class notes or slides into bite-size lessons. Do one or two a day, and walk into the exam already knowing it.</p>
       <p class="notice small" style="margin:0">📲 <b style="display:inline">Best on your phone.</b> After you sign up, add Study Mania to your home screen and turn on reminders. <a href="#" id="w-how" style="font-weight:700">How?</a></p>
@@ -242,10 +245,7 @@ function authView(mode, { upgrade } = {}) {
       ${mode === "login" ? `<a class="btn ghost" href="#/forgot">Forgot password?</a>` : ""}
       ${SAVE_NOTE_ACCOUNT}
     </form>
-    ${upgrade ? "" : `<div class="or"><span>or</span></div>
-    <button class="btn block" id="guest">Use without an account</button>
-    <p class="muted small" style="text-align:center;margin-top:8px">Saves only on this device. You can make an account later.</p>
-    <section class="more-apps" aria-labelledby="more-apps-h">
+    ${upgrade ? "" : `<section class="more-apps" aria-labelledby="more-apps-h">
       <h2 id="more-apps-h">More apps by CBM Studios</h2>
       <a class="app-link" href="https://fantasymania.org/" target="_blank" rel="noopener"><img src="/icons/app-fantasy.png" alt="" width="44" height="44"><span><b>Fantasy Mania</b><small>Free fantasy football ratings, projections and trade help.</small></span><i>Open</i></a>
       <a class="app-link" href="https://retrobaseball.pages.dev/" target="_blank" rel="noopener"><img src="/icons/app-retro.png" alt="" width="44" height="44"><span><b>Retro Baseball</b><small>Play a retro baseball game.</small></span><i>Open</i></a>
