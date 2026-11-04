@@ -1,0 +1,17 @@
+# Sends Study Mania's daily reminders.
+# Every 15 minutes GitHub pings the app; the app decides who is due (their chosen hour,
+# max 2 a day, never if they already studied). Extra pings in the same hour do nothing.
+name: Study Mania reminders
+
+on:
+  schedule:
+    - cron: "7,22,37,52 * * * *"   # odd minutes: GitHub delays runs scheduled on :00
+  workflow_dispatch:                # lets you run it by hand from the Actions tab
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Send any reminders that are due
+        run: curl -fsS --retry 3 --retry-delay 10 -X POST https://studymania.pages.dev/api/cron
