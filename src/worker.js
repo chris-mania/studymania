@@ -101,7 +101,12 @@ async function insertContent(env, courseId, userId, rawCards, rawQuestions, day)
   const start = await env.DB.prepare("SELECT COALESCE(MAX(ord), -1) + 1 AS n, COUNT(*) AS c FROM cards WHERE course_id = ?").bind(courseId).first();
   const room = MAX_CARDS_PER_COURSE - (start.c || 0);
   const keepDay = (raw, clean) => { if (clean && isDay(raw.added_day)) clean.added_day = raw.added_day; return clean; };
-  const cards = (Array.isArray(rawCards) ? rawCards : []).map((r) => keepDay(r, cleanCard(r))).filter(Boolean).slice(0, Math.max(0, room));
+  // Skip words this subject already has (overlapping slides pasted twice).
+  const have = new Set((await env.DB.prepare("SELECT lower(term) AS t FROM cards WHERE course_id = ?").bind(courseId).all()).results.map((r) => r.t));
+  let skipped = 0;
+  const cards = (Array.isArray(rawCards) ? rawCards : []).map((r) => keepDay(r, cleanCard(r))).filter(Boolean)
+    .filter((c) => { const k = c.term.toLowerCase(); if (have.has(k)) { skipped++; return false; } have.add(k); return true; })
+    .slice(0, Math.max(0, room));
   const qs = (Array.isArray(rawQuestions) ? rawQuestions : []).map((r) => keepDay(r, cleanQuestion(r))).filter(Boolean).slice(0, 400);
   const cardStmt = env.DB.prepare(
     `INSERT INTO cards (id, course_id, user_id, ord, added_day, topic, term, full, definition, simple, hook, example, answer, traps, confuse, related, formula, question, parts)
@@ -115,7 +120,7 @@ async function insertContent(env, courseId, userId, rawCards, rawQuestions, day)
       c.answer, JSON.stringify(c.traps), c.confuse, JSON.stringify(c.related), c.formula, c.question, c.parts?.length ? JSON.stringify(c.parts) : null);
   }).concat(qs.map((q, i) => qStmt.bind(crypto.randomUUID(), courseId, userId, qStart.n + i, q.added_day || day, q.topic, q.q, JSON.stringify(q.choices), q.answer, q.why)));
   await runBatch(env, stmts);
-  return { added: cards.length, questions: qs.length, ids };
+  return { added: cards.length, skipped, questions: qs.length, ids };
 }
 
 const ownCourse = (env, id, userId) => env.DB.prepare("SELECT * FROM courses WHERE id = ? AND user_id = ?").bind(id, userId).first();
@@ -138,12 +143,18 @@ const readBody = async (req) => { try { return await req.json(); } catch { retur
 
 function planFields(b, course = {}) {
   const int = (v, lo, hi, d) => { const n = parseInt(v, 10); return isNaN(n) ? d : Math.min(hi, Math.max(lo, n)); };
+  const opt = (k, f) => (b[k] === null ? null : b[k] !== undefined ? f(b[k]) : course[k] ?? null);
   return {
     exam_date: b.exam_date === null ? null : isDay(b.exam_date) ? b.exam_date : course.exam_date ?? null,
     review_days: b.review_days !== undefined ? int(b.review_days, 0, 30, 3) : course.review_days ?? 3,
     finish_by: b.finish_by === null ? null : isDay(b.finish_by) ? b.finish_by : course.finish_by ?? null,
     as_you_go: b.as_you_go !== undefined ? (b.as_you_go ? 1 : 0) : course.as_you_go ?? 0,
     keep_up_days: b.keep_up_days !== undefined ? int(b.keep_up_days, 1, 30, 3) : course.keep_up_days ?? 3,
+    more_total: opt("more_total", (v) => int(v, 1, 99, null)),
+    more_have: opt("more_have", (v) => int(v, 0, 99, null)),
+    more_every: opt("more_every", (v) => (["class", "week", "unsure"].includes(v) ? v : "unsure")),
+    more_share: opt("more_share", (v) => Math.min(0.95, Math.max(0.2, +v || 0.75))),
+    notes_done: b.notes_done !== undefined ? (b.notes_done ? 1 : 0) : course.notes_done ?? 0,
   };
 }
 
@@ -349,8 +360,8 @@ async function api(req, env, url) {
     const count = await env.DB.prepare("SELECT COUNT(*) AS n FROM courses WHERE user_id = ?").bind(user.id).first();
     if (count.n >= 30) return err("You've hit the 30-subject limit. Delete an old one first.");
     const id = crypto.randomUUID(), p = planFields(b);
-    await env.DB.prepare("INSERT INTO courses (id, user_id, name, exam_date, review_days, finish_by, as_you_go, keep_up_days, color) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
-      .bind(id, user.id, name, p.exam_date, p.review_days, p.finish_by, p.as_you_go, p.keep_up_days, (parseInt(b.color, 10) || 0) % 8).run();
+    await env.DB.prepare("INSERT INTO courses (id, user_id, name, exam_date, review_days, finish_by, as_you_go, keep_up_days, color, more_total, more_have, more_every, more_share, notes_done) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .bind(id, user.id, name, p.exam_date, p.review_days, p.finish_by, p.as_you_go, p.keep_up_days, (parseInt(b.color, 10) || 0) % 8, p.more_total, p.more_have, p.more_every, p.more_share, p.notes_done).run();
     const r = await insertContent(env, id, user.id, b.cards, b.questions, day);
     return json({ id, ...r });
   }
@@ -361,8 +372,8 @@ async function api(req, env, url) {
     const courses = Array.isArray(b.courses) ? b.courses.slice(0, 30) : [];
     for (const c of courses) {
       const id = crypto.randomUUID(), p = planFields(c);
-      await env.DB.prepare("INSERT INTO courses (id, user_id, name, exam_date, review_days, finish_by, as_you_go, keep_up_days, color) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
-        .bind(id, user.id, str(c.name, 80) || "My subject", p.exam_date, p.review_days, p.finish_by, p.as_you_go, p.keep_up_days, (parseInt(c.color, 10) || 0) % 8).run();
+      await env.DB.prepare("INSERT INTO courses (id, user_id, name, exam_date, review_days, finish_by, as_you_go, keep_up_days, color, more_total, more_have, more_every, more_share, notes_done) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        .bind(id, user.id, str(c.name, 80) || "My subject", p.exam_date, p.review_days, p.finish_by, p.as_you_go, p.keep_up_days, (parseInt(c.color, 10) || 0) % 8, p.more_total, p.more_have, p.more_every, p.more_share, p.notes_done).run();
       const cards = Array.isArray(c.cards) ? c.cards : [];
       const r = await insertContent(env, id, user.id, cards, c.questions, day);
       const stmts = [];
@@ -409,9 +420,9 @@ async function api(req, env, url) {
     }
     if (!sub && method === "PATCH") {
       const b = await readBody(req), p = planFields(b, course);
-      await env.DB.prepare("UPDATE courses SET name = ?, exam_date = ?, review_days = ?, finish_by = ?, as_you_go = ?, keep_up_days = ?, color = ? WHERE id = ?")
+      await env.DB.prepare("UPDATE courses SET name = ?, exam_date = ?, review_days = ?, finish_by = ?, as_you_go = ?, keep_up_days = ?, color = ?, more_total = ?, more_have = ?, more_every = ?, more_share = ?, notes_done = ? WHERE id = ?")
         .bind(str(b.name, 80) || course.name, p.exam_date, p.review_days, p.finish_by, p.as_you_go, p.keep_up_days,
-          b.color !== undefined ? (parseInt(b.color, 10) || 0) % 8 : course.color, course.id).run();
+          b.color !== undefined ? (parseInt(b.color, 10) || 0) % 8 : course.color, p.more_total, p.more_have, p.more_every, p.more_share, p.notes_done, course.id).run();
       return json({ ok: true });
     }
     if (!sub && method === "DELETE") {
@@ -535,6 +546,9 @@ async function nudgeFor(env, user, day) {
   const lessons = courses.reduce((a, c) => a + (c.plan.todayLeft || 0), 0);
   const soon = courses.filter((c) => c.exam_date && c.exam_date >= day).sort((a, b) => a.exam_date.localeCompare(b.exam_date))[0];
   let body = [lessons ? `${lessons} lesson${lessons > 1 ? "s" : ""} planned today.` : "", due ? `${due} words ready to review.` : ""].filter(Boolean).join(" ") || "Take a quick lap through your words.";
+  // Once, the day after new notes were expected: ask if they came.
+  const late = courses.find((c) => c.plan.more && day === addDays(c.plan.more.next, 1));
+  if (late) body += ` New notes for ${late.name} yet? Add them so your plan stays right.`;
   if (soon) { const n = daysBetween(day, soon.exam_date); body += ` ${n === 0 ? "Your " + soon.name + " exam is today!" : n + " day" + (n === 1 ? "" : "s") + " until " + soon.name + "."}`; }
   return { title: pu.streak ? `🔥 Keep your ${pu.streak}-day streak going` : "📚 Time for today's study", body };
 }

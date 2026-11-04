@@ -294,3 +294,9 @@ details summary{list-style:revert}
 .idk{align-self:center;color:var(--muted);font-weight:700;font-size:15px;padding:10px 16px}
 .idk:disabled{opacity:.4}
 .idk.on{color:var(--accent-text);background:var(--accent-soft);border-radius:12px}
+.morebox{border-left:3px solid var(--accent);padding-left:14px;gap:14px}
+.morecard{border:2px solid var(--accent)}
+.morecard.due{border-color:var(--flame)}
+.morecard.due .kicker{color:var(--flame)}
+.sheet .tabs{flex:none}
+.sheet .tabs button{padding:9px 6px;font-size:14px}

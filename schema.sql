@@ -43,7 +43,12 @@ CREATE TABLE IF NOT EXISTS courses (
   review_days INTEGER DEFAULT 3,         -- stop new lessons this many days before the exam
   finish_by TEXT,                        -- used when there's no exam date: "finish in N days"
   as_you_go INTEGER DEFAULT 0,           -- 1 = notes get added chapter by chapter
-  keep_up_days INTEGER DEFAULT 3,        -- learn each new batch within this many days
+  keep_up_days INTEGER DEFAULT 3,        -- (older setting, no longer used)
+  more_total INTEGER,                    -- more notes coming: lectures/chapters on the exam
+  more_have INTEGER,                     -- ...and how many of them are in so far
+  more_every TEXT,                       -- when new notes usually come: class / week / unsure
+  more_share REAL,                       -- if unsure of counts: rough share you have (0.5, 0.75, 0.9)
+  notes_done INTEGER DEFAULT 0,          -- 1 = "that's everything"
   color INTEGER DEFAULT 0,
   created_at TEXT DEFAULT (datetime('now'))
 );

@@ -82,6 +82,21 @@ export function buildLessons(cards) {
 
 // ---------- the daily plan ----------
 // progress: { cardId: { learned_at, ... } }
+// "More notes are coming": guess how much is still missing and when it should arrive.
+export const CADENCE_DAYS = { class: 3, week: 7, unsure: 7 };
+export function moreNotesInfo(course, lessons, today) {
+  if (!course.as_you_go || course.notes_done) return null;
+  const have = +course.more_have || 0, total = +course.more_total || 0;
+  if (have > 0 && total > 0 && total <= have) return null; // everything is in
+  const lastBatch = lessons.reduce((m, l) => (l.batch && l.batch > m ? l.batch : m), "") || today;
+  const every = CADENCE_DAYS[course.more_every] || 7;
+  let missing = null, future;
+  if (have > 0 && total > have) { missing = total - have; future = Math.round((lessons.length / have) * missing); }
+  else { const share = Math.min(0.95, Math.max(0.2, +course.more_share || 0.75)); future = Math.round(lessons.length * (1 / share - 1)); }
+  const next = addDays(lastBatch, every);
+  return { future: Math.max(1, future), missing, have, total, next, overdue: today > next, every };
+}
+
 export function planFor(course, lessons, progress, today) {
   const learned = (c) => !!progress[c.id]?.learned_at;
   const done = (l) => l.cards.every(learned);
@@ -91,6 +106,11 @@ export function planFor(course, lessons, progress, today) {
   // Work from the state at the start of today so the number doesn't jump around after each lesson.
   const startLeft = left.concat(lessons.filter(doneToday));
   const out = { total: lessons.length, left: left.length, todayDone, perDay: 0, todayLeft: 0, phase: "learn", label: "", cls: "acc", finishOn: null };
+  const more = moreNotesInfo(course, lessons, today);
+  out.more = more;
+  const avgWords = lessons.length ? lessons.reduce((a, l) => a + l.cards.length, 0) / lessons.length : 5;
+  const amount = (n) => `${n} lesson${n > 1 ? "s" : ""} (~${Math.max(1, Math.round(n * avgWords))} words)`;
+  const nextNote = more ? (more.overdue ? " · got your new notes yet?" : ` · more notes ~${niceDate(more.next)}`) : "";
 
   const exam = isDay(course.exam_date) ? course.exam_date : null;
   const reviewDays = Math.max(0, course.review_days ?? 3);
@@ -112,39 +132,29 @@ export function planFor(course, lessons, progress, today) {
     deadline = course.finish_by;
   }
 
+  if (!startLeft.length && more) return { ...out, phase: "waiting", label: more.overdue ? "Caught up 🎉 Got your new notes yet?" : `Caught up on everything you have 🎉 More notes expected ~${niceDate(more.next)}`, cls: "ok" };
   if (!startLeft.length) return { ...out, phase: exam ? "review" : "done", label: exam ? "All lessons learned · review until the exam" : "All lessons learned", cls: "ok" };
 
-  if (!deadline && !course.as_you_go) {
+  if (!deadline) {
     // No deadline: go at your own pace, show when you'd finish at 1 a day.
     out.perDay = 1;
     out.finishOn = addDays(today, startLeft.length - 1);
-    out.label = `At 1 lesson a day you finish ${niceDate(out.finishOn)}`;
+    out.label = more ? `1 lesson a day at your own pace${nextNote}` : `At 1 lesson a day you finish ${niceDate(out.finishOn)}`;
     out.cls = "";
-  } else if (course.as_you_go) {
-    // Each batch of notes gets its own short deadline.
-    const byBatch = {};
-    startLeft.forEach((l) => (byBatch[l.batch] = (byBatch[l.batch] || 0) + 1));
-    let per = 0, behind = false;
-    for (const [batch, n] of Object.entries(byBatch)) {
-      let d = isDay(batch) ? addDays(batch, Math.max(1, course.keep_up_days || 3) - 1) : addDays(today, 2);
-      if (deadline && d > deadline) d = deadline;
-      const avail = daysBetween(today, d) + 1;
-      if (avail < 1) { per += n; behind = true; } else per += Math.ceil(n / avail);
-    }
-    out.perDay = Math.min(per, MAX_LESSONS_PER_DAY);
-    out.label = behind ? `Catch up: ${out.perDay} lesson${out.perDay > 1 ? "s" : ""} today` : `${out.perDay} lesson${out.perDay > 1 ? "s" : ""} a day keeps you caught up`;
-    out.cls = behind || per > MAX_LESSONS_PER_DAY ? "warn" : "acc";
   } else {
+    // Spread what you have AND the notes still coming evenly over the days left,
+    // so there's never a pile-up at the end. The guess is replaced by real numbers once they're pasted.
     const avail = Math.max(1, daysBetween(today, deadline) + 1);
-    const need = Math.ceil(startLeft.length / avail);
-    out.perDay = Math.min(need, MAX_LESSONS_PER_DAY); // never pile on more than this, even when behind
-    out.finishOn = addDays(today, Math.ceil(startLeft.length / out.perDay) - 1);
+    const work = startLeft.length + (more ? more.future : 0);
+    const need = Math.ceil(work / avail);
+    out.perDay = Math.min(need, MAX_LESSONS_PER_DAY, startLeft.length); // can't do lessons that don't exist yet
+    out.finishOn = more ? null : addDays(today, Math.ceil(startLeft.length / out.perDay) - 1);
     if (need > MAX_LESSONS_PER_DAY) {
-      out.label = `Behind: ${MAX_LESSONS_PER_DAY} a day gets you done ${niceDate(out.finishOn)}`;
+      out.label = more ? `Behind: ${MAX_LESSONS_PER_DAY} a day is the max${nextNote}` : `Behind: ${MAX_LESSONS_PER_DAY} a day gets you done ${niceDate(out.finishOn)}`;
       out.cls = "warn";
     } else {
-      out.label = `${out.perDay} lesson${out.perDay > 1 ? "s" : ""} a day · done ${niceDate(out.finishOn)}${exam && reviewDays ? `, then ${reviewDays} review day${reviewDays > 1 ? "s" : ""}` : ""}`;
-      out.cls = "acc";
+      out.label = more ? `${amount(out.perDay)} a day${nextNote}` : `${amount(out.perDay)} a day · done ${niceDate(out.finishOn)}${exam && reviewDays ? `, then ${reviewDays} review day${reviewDays > 1 ? "s" : ""}` : ""}`;
+      out.cls = more?.overdue ? "warn" : "acc";
     }
   }
   out.todayLeft = Math.max(0, out.perDay - todayDone);
@@ -164,6 +174,7 @@ export function summarize(course, cards, progress, today) {
   return {
     id: course.id, name: course.name, color: course.color || 0, exam_date: course.exam_date || null,
     review_days: course.review_days ?? 3, finish_by: course.finish_by || null, as_you_go: course.as_you_go ? 1 : 0, keep_up_days: course.keep_up_days ?? 3,
+    more_total: course.more_total ?? null, more_have: course.more_have ?? null, more_every: course.more_every || null, more_share: course.more_share ?? null, notes_done: course.notes_done ? 1 : 0,
     total: cards.length, learned, due, strong, lessons: lessons.length, plan: p,
     next: (() => { const l = lessons.find((x) => !x.cards.every((c) => progress[c.id]?.learned_at)); return l ? { n: l.n, topic: l.topic, words: l.cards.length } : null; })(),
   };

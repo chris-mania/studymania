@@ -1,6 +1,6 @@
 # Study Mania
 
-Turn class notes into daily bite-size lessons so you never cram.
+Live at **https://studymania.app**. Turn class notes into daily bite-size lessons so you never cram.
 
 How it works for a student:
 1. Create an account (syncs between phone and computer) or use it without one (saved on that device only).
@@ -12,7 +12,7 @@ Runs on Cloudflare: a Worker for the API, D1 (SQLite) for the database, and stat
 
 ---
 
-## Deploy to Cloudflare Pages  →  https://studymania.pages.dev
+## Deploy to Cloudflare Pages  →  https://studymania.app (also studymania.pages.dev)
 
 The app runs on **Cloudflare Pages** (the site + API), plus one tiny **Worker** that only sends the daily reminders, because Pages can't run on a schedule. Both use the same D1 database.
 

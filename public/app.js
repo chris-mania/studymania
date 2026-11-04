@@ -201,7 +201,7 @@ function authView(mode, { upgrade } = {}) {
     <div class="hero">
       <span class="logo" role="img" aria-label="Study Mania"><img class="lg-light" src="/logo-light.png" alt=""><img class="lg-dark" src="/logo-dark.png" alt=""></span>
       <p class="muted">Turn your class notes into bite-size lessons. Do one or two a day, and walk into the exam already knowing it.</p>
-      <p class="notice small" style="margin:0">📲 <b style="display:inline">Best on your phone.</b> After you sign up, add Study Mania to your home screen and turn on reminders. We'll show you how.</p>
+      <p class="notice small" style="margin:0">📲 <b style="display:inline">Best on your phone.</b> After you sign up, add Study Mania to your home screen and turn on reminders. <a href="#" id="w-how" style="font-weight:700">How?</a></p>
     </div>
     <div class="how card">
       <div><i>1</i><p>Copy our prompt and paste it with your notes into any AI: ChatGPT, Claude, Gemini, Grok.</p></div>
@@ -239,6 +239,7 @@ function authView(mode, { upgrade } = {}) {
       $("t-up").onclick = () => { mode = "signup"; draw(); };
       $("t-in").onclick = () => { mode = "login"; draw(); };
       $("guest").onclick = guestSheet;
+      if ($("w-how")) $("w-how").onclick = (e) => { e.preventDefault(); homeScreenSheet(); };
     }
     $("auth").onsubmit = async (e) => {
       e.preventDefault();
@@ -450,32 +451,55 @@ function setupCard() {
   const lockedPush = isIOS && !standalone;
   return `<section class="card stack setup">
     <div class="spread"><h3>Finish setting up</h3><button class="btn ghost small" id="setup-hide" style="padding:4px 6px">Hide</button></div>
-    ${step(homeDone(), 1, "Add it to your home screen", isMobile ? "Opens like a real app, full screen, one tap away." : "On your phone, open studymania.pages.dev and add it to your home screen.", `<button class="btn sm primary" id="setup-home">${isMobile ? "Show me" : "Done"}</button>`)}
+    ${step(homeDone(), 1, "Add it to your home screen", isMobile ? "Opens like a real app, full screen, one tap away." : "On your phone, go to <b style='color:var(--fg);display:inline'>studymania.app</b> and add it to your home screen.", `<button class="btn sm primary" id="setup-home">Show me how</button>`)}
     ${GUEST ? step(false, 2, "Turn on daily reminders", "Reminders need an account, so make one first. It's free.", `<a class="btn sm" href="#/join">Make account</a>`)
       : step(pushDone(), 2, "Turn on daily reminders", lockedPush ? "On iPhone this works once you open Study Mania from your home screen." : "<strong style='color:var(--fg)'>The most important setting.</strong> One nudge a day keeps your streak alive and keeps you from cramming.", lockedPush ? `<span class="pill">After step 1</span>` : `<button class="btn sm primary" id="setup-push">Turn on</button>`)}
   </section>`;
 }
+// Step-by-step "add to home screen" for each kind of phone. Opens on the right tab automatically.
+const isSamsung = /SamsungBrowser/i.test(navigator.userAgent);
+const isAndroid = /android/i.test(navigator.userAgent);
+const isIOSChrome = isIOS && /CriOS/i.test(navigator.userAgent);
 function homeScreenSheet() {
-  const ios = `<ol class="howto">
-      <li>Tap the <b>Share</b> button <span class="kbd">⬆︎</span> in Safari. (On newer iPhones it may be under the <span class="kbd">⋯</span> button first.)</li>
-      <li>Scroll down and tap <b>Add to Home Screen</b>.</li>
-      <li>Tap <b>Add</b>.</li>
-      <li>Close Safari and open <b>Study Mania</b> from your home screen. Sign in there once.</li></ol>
-      <div class="notice small">Using Chrome on iPhone? Open this page in <b style="display:inline">Safari</b> instead. That's the one that can add it.</div>`;
-  const android = `<ol class="howto">
-      <li>Tap <span class="kbd">⋮</span> at the top right of Chrome.</li>
-      <li>Tap <b>Install app</b> or <b>Add to Home screen</b>.</li>
-      <li>Tap <b>Install</b>, then open <b>Study Mania</b> from your home screen.</li></ol>`;
-  const el = sheet(`<h2>Add Study Mania to your home screen</h2>
-    ${installPrompt ? `<button class="btn primary block" id="hs-install">Install now</button><p class="muted small" style="text-align:center">or do it by hand:</p>` : ""}
-    <div class="scroll">${isIOS ? ios : android}</div>
-    <button class="btn block" id="hs-done">I did it</button>`);
-  if (installPrompt) el.querySelector("#hs-install").onclick = async () => { installPrompt.prompt(); const r = await installPrompt.userChoice; installPrompt = null; if (r.outcome === "accepted") { store.set("sm-homescreen-done", true); el.remove(); render(); } };
-  el.querySelector("#hs-done").onclick = () => { store.set("sm-homescreen-done", true); el.remove(); render(); };
+  let tab = isIOS ? "iphone" : isSamsung ? "samsung" : isAndroid ? "android" : "iphone";
+  const guides = {
+    iphone: `<ol class="howto">
+        <li>Open <b>studymania.app</b> in <b>Safari</b>${isIOSChrome ? " (you're in Chrome right now, which works too: tap the <span class='kbd'>⬆︎</span> share icon at the top right)" : ""}.</li>
+        <li>Tap the <b>Share</b> button <span class="kbd">⬆︎</span> (a square with an arrow, at the bottom). On newer iPhones, tap <span class="kbd">⋯</span> first, then <b>Share</b>.</li>
+        <li>Scroll down and tap <b>Add to Home Screen</b> <span class="kbd">⊞</span>. If you see <b>Open as Web App</b>, leave it switched <b>on</b>.</li>
+        <li>Tap <b>Add</b> at the top right.</li>
+        <li>Open <b>Study Mania</b> from your home screen and sign in once there. That's where reminders work.</li></ol>`,
+    samsung: `<ol class="howto">
+        <li>Open <b>studymania.app</b> in <b>Samsung Internet</b>.</li>
+        <li>Tap the <b>menu</b> button <span class="kbd">≡</span> at the bottom right.</li>
+        <li>Tap <b>Add page to</b>, then <b>Home screen</b>. (Some versions show an <b>Install</b> <span class="kbd">⤓</span> icon in the address bar instead. Tap that.)</li>
+        <li>Tap <b>Add</b>, then open <b>Study Mania</b> from your home screen.</li></ol>
+        <div class="notice small">Using <b style="display:inline">Chrome</b> on your Samsung? Use the "Android / Chrome" tab.</div>`,
+    android: `<ol class="howto">
+        <li>Open <b>studymania.app</b> in <b>Chrome</b>.</li>
+        <li>Tap <span class="kbd">⋮</span> at the top right.</li>
+        <li>Tap <b>Install app</b> (or <b>Add to Home screen</b>), then <b>Install</b>.</li>
+        <li>Open <b>Study Mania</b> from your home screen or app drawer.</li></ol>`,
+  };
+  let el;
+  const draw = () => {
+    const html = `<h2>Add Study Mania to your home screen</h2>
+      ${!isMobile ? `<div class="notice small">You're on a computer. Do this on your <b style="display:inline">phone</b>: open <b style="display:inline">studymania.app</b> there. <button class="btn sm" id="hs-copy" style="margin-left:6px">Copy link</button></div>` : ""}
+      ${installPrompt ? `<button class="btn primary block" id="hs-install">Install now (1 tap)</button>` : ""}
+      <div class="tabs" role="group" aria-label="Phone type">${[["iphone", "iPhone"], ["samsung", "Samsung"], ["android", "Android / Chrome"]].map(([k, l]) => `<button type="button" data-tab="${k}" aria-pressed="${tab === k}">${l}</button>`).join("")}</div>
+      <div class="scroll">${guides[tab]}</div>
+      <button class="btn block" id="hs-done">I did it</button>`;
+    if (!el) el = sheet(html); else el.querySelector(".sheet-in").innerHTML = html;
+    el.querySelectorAll("[data-tab]").forEach((b) => (b.onclick = () => { tab = b.dataset.tab; draw(); }));
+    if (el.querySelector("#hs-install")) el.querySelector("#hs-install").onclick = async () => { installPrompt.prompt(); const r = await installPrompt.userChoice; installPrompt = null; if (r.outcome === "accepted") { store.set("sm-homescreen-done", true); el.remove(); render(); } };
+    if (el.querySelector("#hs-copy")) el.querySelector("#hs-copy").onclick = async (e) => { try { await navigator.clipboard.writeText("https://studymania.app"); e.target.textContent = "Copied ✓"; } catch { e.target.textContent = "studymania.app"; } };
+    el.querySelector("#hs-done").onclick = () => { store.set("sm-homescreen-done", true); el.remove(); render(); };
+  };
+  draw();
 }
 function wireSetup() {
   if ($("setup-hide")) $("setup-hide").onclick = () => { store.set("sm-setup-hidden", true); render(); toast("You can turn reminders on anytime in Settings."); };
-  if ($("setup-home")) $("setup-home").onclick = () => (isMobile ? homeScreenSheet() : (store.set("sm-homescreen-done", true), render()));
+  if ($("setup-home")) $("setup-home").onclick = homeScreenSheet;
   if ($("setup-push")) $("setup-push").onclick = enablePush;
 }
 
@@ -526,6 +550,8 @@ route(/^\/$/, () => {
       <div class="week">${days.map((d) => `<div class="dayc ${hit.has(d) ? "hit" : ""} ${d === todayStr() ? "now" : ""}"><i>${hit.has(d) ? "🔥" : ""}</i>${"SMTWTFS"[new Date(d + "T12:00").getDay()]}</div>`).join("")}</div>
     </section>
     ${back}
+    ${courses.filter((c) => c.plan.more?.overdue).map((c) => `<div class="notice">📥 <b style="display:inline">New notes for ${esc(c.name)} yet?</b> Add them so your plan stays right. <a href="#/add/${c.id}" style="font-weight:700">Add notes</a> · <a href="#/c/${c.id}">That's everything</a></div>`).join("")}
+    ${courses.reduce((a, c) => a + (c.plan.todayLeft || 0), 0) > 6 ? `<div class="notice warn"><b>Heads up: your subjects add up to ${courses.reduce((a, c) => a + (c.plan.todayLeft || 0), 0)} lessons today.</b> Exams close together? Start one earlier or add review days in its plan.</div>` : ""}
     ${setupCard()}
     ${nx ? `<a class="upnext" href="#${nextHref(nx)}" style="--sc:${colorVar(nx.c.color)}">
         <span class="kicker">Up next · ${esc(nx.c.name)}</span>
@@ -594,52 +620,82 @@ route(/^\/leaderboard$/, async () => {
 
 // ---------- plan form (used when adding a subject and on the subject page) ----------
 function planState(c) {
+  const more = !!c.as_you_go && !c.notes_done;
   return {
     mode: c.exam_date ? "exam" : c.finish_by ? "days" : c.mode || "exam",
     exam_date: c.exam_date || addDays(todayStr(), 28),
     review_days: c.review_days ?? 3,
     finish_days: c.finish_by ? Math.max(1, daysBetween(todayStr(), c.finish_by) + 1) : 10,
-    as_you_go: !!c.as_you_go, keep_up_days: c.keep_up_days ?? 3,
+    notes: c.notes || (more ? "more" : "all"),
+    count: c.more_share && !c.more_total ? "unsure" : "count",
+    have: c.more_have ?? "", total: c.more_total ?? "",
+    share: c.more_share ?? 0.75, every: c.more_every || "week",
   };
 }
 function planToFields(s) {
+  const more = s.notes === "more", counted = more && s.count === "count";
   return {
     exam_date: s.mode === "exam" ? s.exam_date : null,
     review_days: s.review_days,
     finish_by: s.mode === "days" ? addDays(todayStr(), Math.max(1, s.finish_days) - 1) : null,
-    as_you_go: s.as_you_go ? 1 : 0, keep_up_days: s.keep_up_days,
+    as_you_go: more ? 1 : 0, notes_done: more ? 0 : 1,
+    more_have: counted ? +s.have : null, more_total: counted ? +s.total : null,
+    more_share: more && !counted ? +s.share : null, more_every: more ? s.every : null,
   };
+}
+// Returns a message if something in the form doesn't add up, otherwise null.
+function planProblem(s) {
+  if (s.notes !== "more" || s.count !== "count") return null;
+  const h = +s.have, t = +s.total;
+  if (!h || !t) return 'Fill in how many you have and how many there are, or tap "Not sure".';
+  if (h >= t) return 'If you have all of them, pick "Yes, all of them" instead.';
+  return null;
 }
 function planFormHTML(s) {
   const seg = (name, vals, cur, fmt = (v) => v) => `<div class="seg wrap" role="group">${vals.map((v) => `<button type="button" data-${name}="${v}" aria-pressed="${String(cur) === String(v)}">${fmt(v)}</button>`).join("")}</div>`;
+  const label = (t, sub) => `<span style="font-weight:700;font-size:15px">${t}</span>${sub ? `<span class="muted small" style="font-weight:400">${sub}</span>` : ""}`;
   return `<div class="planform stack">
-    <div class="field" style="font-weight:700;font-size:15px">When do you need to know it?
+    <div class="field">${label("When do you need to know it?")}
       ${seg("mode", ["exam", "days", "none"], s.mode, (v) => ({ exam: "Exam date", days: "Finish in…", none: "No deadline" }[v]))}</div>
     ${s.mode === "exam" ? `
       <label class="field">Exam date<input type="date" id="p-exam" value="${esc(s.exam_date)}" min="${todayStr()}"></label>
-      <div class="field" style="font-weight:700;font-size:15px">Review days before the exam
-        <span class="muted small" style="font-weight:400">No new lessons these days, just reviews and practice exams.</span>
+      <div class="field">${label("Review days before the exam", "No new lessons these days, just reviews and practice exams.")}
         ${seg("rev", [0, 1, 2, 3, 5, 7], s.review_days)}</div>` : ""}
     ${s.mode === "days" ? `
-      <div class="field" style="font-weight:700;font-size:15px">Finish all lessons in
+      <div class="field">${label("Finish all lessons in")}
         ${seg("fin", [5, 10, 15, 30], s.finish_days, (v) => v + " days")}
-        <div class="row"><span class="muted small" style="font-weight:400">or</span><input type="number" id="p-fin" min="1" max="365" value="${esc(s.finish_days)}" style="max-width:110px"><span class="muted small" style="font-weight:400">days</span></div></div>` : ""}
+        <div class="row"><span class="muted small">or</span><input type="number" id="p-fin" min="1" max="365" value="${esc(s.finish_days)}" style="max-width:110px"><span class="muted small">days</span></div></div>` : ""}
     ${s.mode === "none" ? `<p class="muted small">Go lesson by lesson at your own pace. We'll show when you'll finish at 1 a day, and you can always do more.</p>` : ""}
-    <label class="checkrow"><input type="checkbox" id="p-go" ${s.as_you_go ? "checked" : ""}> I'm adding notes as I go (like 2 chapters a week)</label>
-    ${s.as_you_go ? `<div class="field" style="font-weight:700;font-size:15px">Learn each new batch of notes within
-      ${seg("keep", [2, 3, 5, 7], s.keep_up_days, (v) => v + " days")}
-      <span class="muted small" style="font-weight:400">Each time you add notes, they get their own little deadline so you never fall behind.${s.mode === "exam" ? " Everything still finishes before your review days." : ""}</span></div>` : ""}
-    <p class="muted small">You can always do extra lessons and finish early.</p>
+
+    <div class="field">${label("Do you have all your notes for this?")}
+      ${seg("notes", ["all", "more"], s.notes, (v) => (v === "all" ? "✅ Yes, all of them" : "⏳ Not yet, more are coming"))}</div>
+    ${s.notes === "more" ? `<div class="morebox stack">
+      <div class="field">${label("How much do you have so far?")}
+        ${s.count === "count" ? `<div class="row" style="flex-wrap:wrap;gap:8px"><span>I have</span><input type="number" id="p-have" min="0" max="99" inputmode="numeric" value="${esc(s.have)}" placeholder="4" style="max-width:76px"><span>of</span><input type="number" id="p-total" min="1" max="99" inputmode="numeric" value="${esc(s.total)}" placeholder="5" style="max-width:76px"><span>lectures or chapters</span></div>
+          <button type="button" class="btn ghost small" data-count="unsure" style="align-self:flex-start;padding:4px 0">Not sure how many?</button>`
+        : `${seg("share", [0.5, 0.75, 0.9], s.share, (v) => ({ 0.5: "About half", 0.75: "Most of it", 0.9: "Almost all" }[v]))}
+          <button type="button" class="btn ghost small" data-count="count" style="align-self:flex-start;padding:4px 0">I know the numbers</button>`}</div>
+      <div class="field">${label("When do you usually get new notes?")}
+        ${seg("every", ["class", "week", "unsure"], s.every, (v) => ({ class: "After every class", week: "Once a week", unsure: "Not sure" }[v]))}</div>
+      <p class="small" id="p-err" style="color:var(--bad)" ${planProblem(s) ? "" : "hidden"}>${esc(planProblem(s) || "")}</p>
+      <div class="notice small">No problem. Add what you have now. We'll guess how much is coming and spread it all out so there's no pile-up at the end. When you get the rest, tap <b style="display:inline">+ Add more notes</b> on this subject and your plan updates.</div>
+    </div>` : ""}
+    <p class="muted small">💡 Only paste notes for <b style="display:inline">this</b> exam. Tip: make one subject per exam (like "Consumer Behavior · Exam 2").</p>
   </div>`;
 }
 function wirePlanForm(root, s, redraw) {
-  root.querySelectorAll("[data-mode]").forEach((b) => (b.onclick = () => { s.mode = b.dataset.mode; redraw(); }));
-  root.querySelectorAll("[data-rev]").forEach((b) => (b.onclick = () => { s.review_days = +b.dataset.rev; redraw(); }));
-  root.querySelectorAll("[data-fin]").forEach((b) => (b.onclick = () => { s.finish_days = +b.dataset.fin; redraw(); }));
-  root.querySelectorAll("[data-keep]").forEach((b) => (b.onclick = () => { s.keep_up_days = +b.dataset.keep; redraw(); }));
+  const on = (attr, fn) => root.querySelectorAll(`[data-${attr}]`).forEach((b) => (b.onclick = () => { fn(b.dataset[attr]); redraw(); }));
+  on("mode", (v) => (s.mode = v));
+  on("rev", (v) => (s.review_days = +v));
+  on("fin", (v) => (s.finish_days = +v));
+  on("notes", (v) => (s.notes = v));
+  on("count", (v) => (s.count = v));
+  on("share", (v) => (s.share = +v));
+  on("every", (v) => (s.every = v));
   const ex = root.querySelector("#p-exam"); if (ex) ex.onchange = () => (s.exam_date = ex.value);
   const fin = root.querySelector("#p-fin"); if (fin) fin.onchange = () => { s.finish_days = Math.max(1, Math.min(365, +fin.value || 10)); redraw(); };
-  root.querySelector("#p-go").onchange = (e) => { s.as_you_go = e.target.checked; redraw(); };
+  const num = (id, key) => { const el = root.querySelector(id); if (el) el.oninput = () => { s[key] = el.value; const e = root.querySelector("#p-err"), m = planProblem(s); if (e) { e.textContent = m || ""; e.hidden = !m; } }; };
+  num("#p-have", "have"); num("#p-total", "total");
 }
 
 // ---------- add a subject ----------
@@ -674,7 +730,7 @@ function parseReply(text) {
 
 route(/^\/add(?:\/([\w-]+))?$/, (addTo) => {
   const existing = addTo ? ME.courses.find((c) => c.id === addTo) : null;
-  const S = { step: existing ? 2 : 1, name: "", color: ME.courses.length % COLORS, parsed: null, raw: "", plan: planState({}) };
+  const S = { step: existing ? 2 : 1, name: "", color: ME.courses.length % COLORS, parsed: null, raw: "", plan: planState({}), addN: 1, last: false };
   const draw = () => {
     const stepBar = `<div class="steps">${[1, 2, 3].map((i) => `<i class="${i <= S.step ? "on" : ""}"></i>`).join("")}</div>`;
     let body = "";
@@ -708,14 +764,19 @@ route(/^\/add(?:\/([\w-]+))?$/, (addTo) => {
       ${S.parsed ? `<div class="card stack"><div class="spread"><h3>${plural(S.parsed.cards.length, "card")} · ${plural(S.parsed.questions.length, "exam question")}</h3><span class="pill ok">Looks good</span></div>
         <p class="muted small">${[...new Set(S.parsed.cards.map((c) => c.topic || "General"))].map(esc).join(" · ")}</p>
         <div class="preview">${S.parsed.cards.slice(0, 40).map((c) => `<div><b>${esc(c.term)}</b>: ${esc(c.simple || c.answer)}</div>`).join("")}</div></div>
+        ${existing && existing.as_you_go && !existing.notes_done ? `<div class="card stack">
+          ${existing.more_total ? `<div class="field"><span style="font-weight:700;font-size:15px">How many lectures or chapters is this?</span>
+            <div class="seg wrap">${[1, 2, 3, 4].map((n) => `<button type="button" data-addn="${n}" aria-pressed="${S.addN === n}">${n}</button>`).join("")}</div>
+            <span class="muted small">You'll have ${Math.min(existing.more_total, (existing.more_have || 0) + S.addN)} of ${existing.more_total}.</span></div>` : ""}
+          <label class="checkrow"><input type="checkbox" id="a-last" ${S.last ? "checked" : ""}> This is the last of it. I have everything now.</label></div>` : ""}
         <button class="btn primary block" id="a-save">${existing ? "Add to " + esc(existing.name) : "Create subject"}</button>` : `<button class="btn primary block" id="a-check">Check reply</button>`}
       <button class="btn ghost" id="a-back">Back</button>`;
     app.innerHTML = `${topbar(existing ? "/c/" + existing.id : "/")}<div class="stack">${stepBar}${body}</div>`;
     if (S.step === 1) {
       const keepName = () => (S.name = $("a-name").value);
-      wirePlanForm(app, S.plan, () => { keepName(); draw(); });
+      wirePlanForm(app, S.plan, () => { keepName(); const y = scrollY; draw(); scrollTo(0, y); });
       app.querySelectorAll(".sw").forEach((b) => (b.onclick = () => { keepName(); S.color = +b.dataset.c; draw(); }));
-      $("a-next").onclick = () => { keepName(); S.name = S.name.trim(); if (!S.name) { $("a-name").focus(); return toast("Give it a name first."); } S.step = 2; draw(); };
+      $("a-next").onclick = () => { keepName(); S.name = S.name.trim(); if (!S.name) { $("a-name").focus(); return toast("Give it a name first."); } const pr = planProblem(S.plan); if (pr) return toast(pr); S.step = 2; draw(); };
       $("a-sample").onclick = async () => {
         try {
           const s = await (await fetch("/sample.json")).json();
@@ -740,11 +801,22 @@ route(/^\/add(?:\/([\w-]+))?$/, (addTo) => {
         try { S.raw = ta.value; S.parsed = parseReply(ta.value); draw(); }
         catch (e) { $("a-err").textContent = e.message; $("a-err").hidden = false; }
       };
+      app.querySelectorAll("[data-addn]").forEach((b) => (b.onclick = () => { S.addN = +b.dataset.addn; const raw = $("a-paste").value; draw(); $("a-paste").value = raw; }));
+      if ($("a-last")) $("a-last").onchange = (e) => (S.last = e.target.checked);
       if ($("a-save")) $("a-save").onclick = async () => {
         $("a-save").disabled = true;
         try {
           let id;
-          if (existing) { const r = await api(`/courses/${existing.id}/cards`, { method: "POST", body: { cards: S.parsed.cards, questions: S.parsed.questions } }); id = existing.id; toast(`Added ${plural(r.added, "card")}.`); }
+          if (existing) {
+            const r = await api(`/courses/${existing.id}/cards`, { method: "POST", body: { cards: S.parsed.cards, questions: S.parsed.questions } }); id = existing.id;
+            if (existing.as_you_go && !existing.notes_done) {
+              const have = existing.more_total ? Math.min(existing.more_total, (existing.more_have || 0) + S.addN) : null;
+              const done = S.last || (have && have >= existing.more_total);
+              const share = existing.more_total ? null : Math.min(0.95, (existing.more_share || 0.75) + (1 - (existing.more_share || 0.75)) / 2);
+              await api(`/courses/${id}`, { method: "PATCH", body: { more_have: have, notes_done: done ? 1 : 0, ...(share ? { more_share: share } : {}) } });
+            }
+            toast(r.skipped ? `Added ${plural(r.added, "new word")}. ${r.skipped} ${r.skipped === 1 ? "was" : "were"} already here, so we skipped ${r.skipped === 1 ? "it" : "them"}.` : `Added ${plural(r.added, "new word")}.`, 4500);
+          }
           else { const r = await api("/courses", { method: "POST", body: { name: S.name || S.parsed.subject || "My subject", color: S.color, ...planToFields(S.plan), cards: S.parsed.cards, questions: S.parsed.questions } }); id = r.id; }
           await loadMe(); go(`/c/${id}`);
         } catch (e) { toast(e.message); $("a-save").disabled = false; }
@@ -776,6 +848,12 @@ route(/^\/c\/([\w-]+)$/, async (id) => {
     app.innerHTML = `${topbar("/")}${guestBanner()}
     <div class="stack" style="--sc:${colorVar(c.color)}">
       <div class="stack" style="gap:8px"><h1>${esc(c.name)}</h1>${examText(c) ? `<div><span class="pill">${examText(c)}</span></div>` : ""}</div>
+      ${p.more ? `<div class="card stack morecard ${p.more.overdue ? "due" : ""}">
+        <div><div class="kicker">${p.more.overdue ? "📥 Got your new notes yet?" : "⏳ More notes coming"}</div>
+          <p style="margin-top:4px">${p.more.total ? `You have <b>${p.more.have} of ${p.more.total}</b> lectures or chapters.` : "You have some of your notes so far."} ${p.more.overdue ? "They were expected around " + niceDate(p.more.next) + "." : "Next ones expected around <b>" + niceDate(p.more.next) + "</b>."}</p>
+          <p class="muted small">Your plan already saves room for about ${plural(p.more.future, "lesson")} still coming.</p></div>
+        <div class="row"><a class="btn primary grow" href="#/add/${c.id}">+ Add notes</a><button class="btn grow" id="c-alldone">That's everything</button></div>
+      </div>` : ""}
       <div class="card stack">
         <div class="spread"><div class="grow"><div class="kicker">Your plan</div><p style="margin-top:2px"><b>${esc(p.label)}</b></p>
           ${p.todayLeft ? `<p class="muted small">Today: ${plural(p.todayLeft, "lesson")} left${p.todayDone ? ` (${p.todayDone} done ✓)` : ""}</p>` : p.todayDone ? `<p class="small" style="color:var(--good)">Today's lessons done ✓ Extra lessons put you ahead.</p>` : ""}</div>
@@ -810,6 +888,9 @@ route(/^\/c\/([\w-]+)$/, async (id) => {
     $("c-review").onclick = () => go(`/s/${id}/review`);
     $("c-exam").onclick = () => go(`/exam/${id}`);
     $("c-plan").onclick = () => planSheet(c, draw);
+    if ($("c-alldone")) $("c-alldone").onclick = async () => {
+      try { await api(`/courses/${id}`, { method: "PATCH", body: { notes_done: 1 } }); c.notes_done = 1; await loadMe(); toast("Got it. Your plan now uses just what you have."); draw(); } catch (e) { toast(e.message); }
+    };
     $("c-mark").onclick = () => markSheet(d, draw);
     app.querySelectorAll(".lesson .go").forEach((b) => (b.onclick = () => go(`/s/${id}/lesson/${b.dataset.n}`)));
     app.querySelectorAll(".chk").forEach((b) => (b.onclick = async () => {
@@ -836,6 +917,7 @@ function planSheet(c, after) {
     el.querySelector(".scroll").scrollTop = top;
     wirePlanForm(el, s, drawSheet);
     el.querySelector("#pl-save").onclick = async () => {
+      const pr = planProblem(s); if (pr) return toast(pr);
       const f = planToFields(s);
       try { await api(`/courses/${c.id}`, { method: "PATCH", body: f }); Object.assign(c, f); await loadMe(); toast("Plan saved."); } catch (e) { toast(e.message); }
       el.remove(); after();
@@ -1240,7 +1322,8 @@ route(/^\/settings$/, async () => {
       <p class="muted small">${u.has_security ? "✓ Security questions are set. You can use them if you forget your password." : "Set security questions so you can reset your password if you forget it."}</p>
       <button class="btn block" id="s-sec">${u.has_security ? "Change security questions" : "Set up security questions"}</button></div>`}
     <div class="card stack"><h3>Put it on your home screen</h3>
-      <p class="muted small">${isIOS ? "In Safari, tap Share, then Add to Home Screen." : "In Chrome, tap ⋮, then Add to Home screen (or Install app)."} ${GUEST ? "Without an account, do this first and always open it from the icon." : isIOS ? "On iPhone, reminders only work from the home screen app. You'll sign in once there." : ""}</p></div>
+      <p class="muted small">Opens like a real app at <b style="color:var(--fg)">studymania.app</b>. ${GUEST ? "Without an account, do this first and always open it from the icon." : isIOS ? "On iPhone, reminders only work from the home screen app. You'll sign in once there." : ""}</p>
+      <button class="btn block" id="s-home">Show me how (iPhone, Samsung, Android)</button></div>
     <div class="card stack">
       ${GUEST ? `<button class="btn ghost danger" id="s-wipe">Erase everything on this device</button>` : `
       <p class="muted small">Signed in as @${esc(u.username || "")} (${esc(u.email)}). Best streak: ${plural(u.best_streak || 0, "day")}. Streak freezes: ${u.freezes || 0} of 2. You earn one every 7 days in a row.</p>
@@ -1255,6 +1338,7 @@ route(/^\/settings$/, async () => {
   app.querySelectorAll("[data-g]").forEach((b) => (b.onclick = async () => { await patch({ daily_goal: +b.dataset.g }); app.querySelectorAll("[data-g]").forEach((x) => x.setAttribute("aria-pressed", x === b)); }));
   $("s-snd").onclick = (e) => { const v = !store.get("sm-sound", true); store.set("sm-sound", v); e.target.textContent = v ? "On" : "Off"; e.target.setAttribute("aria-pressed", v); if (v) chime("good"); };
   if ($("s-signin")) $("s-signin").onclick = (e) => { e.preventDefault(); GUEST = false; store.set("sm-guest", false); ME = null; authView("login"); };
+  if ($("s-home")) $("s-home").onclick = homeScreenSheet;
   if ($("s-sec")) $("s-sec").onclick = () => securitySheet(false, () => render());
   const twice = (btn, label, fn) => { let armed = false; btn.onclick = async () => { if (!armed) { armed = true; btn.textContent = label; return; } await fn(); }; };
   if ($("s-wipe")) twice($("s-wipe"), "Tap again to erase everything", async () => { clearGuest(); GUEST = false; store.set("sm-guest", false); ME = null; go("/welcome"); });
@@ -1301,6 +1385,12 @@ async function enablePush() {
 }
 
 // ---------- boot ----------
+// Study Mania lives at studymania.app now. The old address forwards there,
+// except for no-account users, whose progress is stored on the old address.
+if (location.hostname === "studymania.pages.dev") {
+  if (!hasGuestData()) { location.replace("https://studymania.app/" + location.hash); }
+  else setTimeout(() => toast("Study Mania moved to studymania.app. Make an account in Settings to take your progress with you.", 8000), 1500);
+}
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
 window.addEventListener("online", flushOutbox);
 document.addEventListener("visibilitychange", () => {

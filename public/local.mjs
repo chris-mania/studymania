@@ -31,22 +31,31 @@ function todayInfo(d, day) {
   const t = d.days[day] || {};
   return { xp: t.xp || 0, rounds: t.rounds || 0, lessons: t.lessons || 0, reviews: t.reviews || 0, recent };
 }
-function planFields(b, c = {}) {
-  const int = (v, lo, hi, def) => { const n = parseInt(v, 10); return isNaN(n) ? def : Math.min(hi, Math.max(lo, n)); };
+function planFields(b, course = {}) {
+  const int = (v, lo, hi, d) => { const n = parseInt(v, 10); return isNaN(n) ? d : Math.min(hi, Math.max(lo, n)); };
+  const opt = (k, f) => (b[k] === null ? null : b[k] !== undefined ? f(b[k]) : course[k] ?? null);
   return {
-    exam_date: b.exam_date === null ? null : isDay(b.exam_date) ? b.exam_date : c.exam_date ?? null,
-    review_days: b.review_days !== undefined ? int(b.review_days, 0, 30, 3) : c.review_days ?? 3,
-    finish_by: b.finish_by === null ? null : isDay(b.finish_by) ? b.finish_by : c.finish_by ?? null,
-    as_you_go: b.as_you_go !== undefined ? (b.as_you_go ? 1 : 0) : c.as_you_go ?? 0,
-    keep_up_days: b.keep_up_days !== undefined ? int(b.keep_up_days, 1, 30, 3) : c.keep_up_days ?? 3,
+    exam_date: b.exam_date === null ? null : isDay(b.exam_date) ? b.exam_date : course.exam_date ?? null,
+    review_days: b.review_days !== undefined ? int(b.review_days, 0, 30, 3) : course.review_days ?? 3,
+    finish_by: b.finish_by === null ? null : isDay(b.finish_by) ? b.finish_by : course.finish_by ?? null,
+    as_you_go: b.as_you_go !== undefined ? (b.as_you_go ? 1 : 0) : course.as_you_go ?? 0,
+    keep_up_days: b.keep_up_days !== undefined ? int(b.keep_up_days, 1, 30, 3) : course.keep_up_days ?? 3,
+    more_total: opt("more_total", (v) => int(v, 1, 99, null)),
+    more_have: opt("more_have", (v) => int(v, 0, 99, null)),
+    more_every: opt("more_every", (v) => (["class", "week", "unsure"].includes(v) ? v : "unsure")),
+    more_share: opt("more_share", (v) => Math.min(0.95, Math.max(0.2, +v || 0.75))),
+    notes_done: b.notes_done !== undefined ? (b.notes_done ? 1 : 0) : course.notes_done ?? 0,
   };
 }
 function addContent(c, cards, questions, day) {
-  const nc = (Array.isArray(cards) ? cards : []).map(cleanCard).filter(Boolean).slice(0, Math.max(0, 800 - c.cards.length))
-    .map((k) => ({ ...k, id: uid(), added_day: day }));
+  const have = new Set(c.cards.map((k) => k.term.toLowerCase()));
+  let skipped = 0;
+  const nc = (Array.isArray(cards) ? cards : []).map(cleanCard).filter(Boolean)
+    .filter((k) => { const t = k.term.toLowerCase(); if (have.has(t)) { skipped++; return false; } have.add(t); return true; })
+    .slice(0, Math.max(0, 800 - c.cards.length)).map((k) => ({ ...k, id: uid(), added_day: day }));
   const nq = (Array.isArray(questions) ? questions : []).map(cleanQuestion).filter(Boolean).map((q) => ({ ...q, id: uid(), added_day: day }));
   c.cards.push(...nc); c.questions.push(...nq);
-  return { added: nc.length, questions: nq.length };
+  return { added: nc.length, skipped, questions: nq.length };
 }
 
 export async function localApi(path, method, body, day) {
