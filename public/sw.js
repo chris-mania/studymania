@@ -1,5 +1,5 @@
 // Study Mania service worker: offline app shell + daily reminder notifications.
-const CACHE = "sm-v10";
+const CACHE = "sm-v11";
 const SHELL = ["/", "/index.html", "/styles.css", "/app.js", "/prompt.js", "/shared.mjs", "/local.mjs", "/manifest.webmanifest", "/icons/icon-192.png", "/logo-light.png", "/logo-dark.png"];
 
 self.addEventListener("install", (e) => {
@@ -14,7 +14,7 @@ self.addEventListener("fetch", (e) => {
   if (e.request.method !== "GET" || url.origin !== location.origin || url.pathname.startsWith("/api/")) return;
   // Network first so updates show up right away; fall back to the cached copy when offline.
   e.respondWith(
-    fetch(e.request)
+    fetch(e.request, { cache: "no-cache" }) // skip the browser's own saved copy so updates always show
       .then((res) => {
         if (res.ok) { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(e.request, copy)); }
         return res;

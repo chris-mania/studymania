@@ -1391,7 +1391,21 @@ if (location.hostname === "studymania.pages.dev") {
   if (!hasGuestData()) { location.replace("https://studymania.app/" + location.hash); }
   else setTimeout(() => toast("Study Mania moved to studymania.app. Make an account in Settings to take your progress with you.", 8000), 1500);
 }
-if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
+// Offline support + automatic updates: check for a new version on open and whenever the app comes back
+// to the screen. When one is ready, reload into it (but never in the middle of a lesson or exam).
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" }).then((reg) => {
+    reg.update().catch(() => {});
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") reg.update().catch(() => {}); });
+  }).catch(() => {});
+  let hadController = !!navigator.serviceWorker.controller, pendingReload = false;
+  const safeToReload = () => !/^#\/(s|exam|add)\//.test(location.hash) && !/^#\/add$/.test(location.hash);
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (!hadController) { hadController = true; return; } // first install, nothing to refresh
+    if (safeToReload()) location.reload(); else pendingReload = true;
+  });
+  window.addEventListener("hashchange", () => { if (pendingReload && safeToReload()) location.reload(); });
+}
 window.addEventListener("online", flushOutbox);
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible" && ME && (location.hash === "" || location.hash === "#/")) loadMe().then(render).catch(() => {});

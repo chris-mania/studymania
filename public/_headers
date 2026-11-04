@@ -1,0 +1,10 @@
+# Always check for a newer version of the app's files (cheap: unchanged files aren't re-downloaded).
+/*
+  Cache-Control: no-cache
+# Pictures rarely change, so these can be kept for a week.
+/icons/*
+  Cache-Control: public, max-age=604800
+/logo-light.png
+  Cache-Control: public, max-age=604800
+/logo-dark.png
+  Cache-Control: public, max-age=604800
