@@ -1135,6 +1135,33 @@ function tfQ(d, k) {
   const stmt = truth ? k.answer : k.traps[(Math.random() * k.traps.length) | 0];
   return { k, topic: k.topic, html: `True or false?<span class="sub"><b>${esc(k.term)}</b>: ${esc(stmt)}</span>`, opts: ["True", "False"], ans: truth ? "True" : "False", why: `${k.term}: ${k.simple}` };
 }
+// ---- Cards with 2-3 look-alike terms ("A vs. B vs. C") ----
+// Each time, a different term is tested, and the clue is a tricky situation, an example or a meaning.
+const isPair = (k) => (k.parts || []).filter((p) => p.term && (p.scenario || p.example || p.simple)).length >= 2;
+const PAIR_TURN = {};
+const maskNames = (text, k) => (k.parts || []).reduce((t, p) => t.replace(new RegExp(p.term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"), "____"), String(text || ""));
+function pairClue(k, p, fresh, want) {
+  // Fresh situations first (harder: you haven't seen them), then examples, then meanings.
+  const pool = [p.scenario && ["situation", p.scenario], p.example && ["example", p.example], p.simple && ["meaning", p.simple]].filter(Boolean);
+  const pick = (want && pool.find((x) => x[0] === want)) || (fresh ? pool[0] : pool[(Math.random() * pool.length) | 0]);
+  return { kind: pick[0], text: maskNames(pick[1], k) };
+}
+function pairQ(d, k, want) {
+  const parts = k.parts.filter((p) => p.term && (p.scenario || p.example || p.simple));
+  const i = (PAIR_TURN[k.id] = ((PAIR_TURN[k.id] ?? (Math.random() * parts.length) | 0) + 1) % parts.length);
+  const p = parts[i], c = pairClue(k, p, false, want);
+  const names = parts.map((x) => x.term);
+  // A 4th choice from the same topic you've already learned, so it's not a pure 50/50.
+  const extra = names.length < 4 ? siblings(d, k, 4 - names.length, "term").filter((t) => !names.some((n) => n.toLowerCase() === t.toLowerCase())) : [];
+  const ask = c.kind === "meaning" ? "Which one means this?" : "Which one is this?";
+  return { k, topic: k.topic, html: `${ask}<span class="sub">${esc(c.text)}</span>`, opts: shuffle([...names, ...extra.slice(0, 1)]), ans: p.term,
+    why: `${p.term}: ${p.simple}` };
+}
+// Match every term to its situation at once.
+function matchQ(d, k) {
+  const parts = shuffle(k.parts.filter((p) => p.term && (p.scenario || p.example || p.simple)));
+  return { k, match: true, topic: k.topic, rows: parts.map((p) => ({ clue: pairClue(k, p, true).text, ans: p.term })), names: shuffle(parts.map((p) => p.term)) };
+}
 const aiQ = (q) => ({ topic: q.topic, html: esc(q.q), opts: shuffle([...q.choices]), ans: q.choices[q.answer], why: q.why });
 const COUNTS_AT = 0.8; // a quit round counts toward the streak once it's 80% done
 
@@ -1174,7 +1201,7 @@ route(/^\/s\/([\w-]+)\/(next|review|quiz|lesson|misses)(?:\/(\d+))?$/, async (id
   // Round state. Lessons are saved on this device so you can pick up where you left off.
   const KEY = mode === "learn" ? `sm-sess-${id}-${lesson.n}` : null;
   let S = { i: 0, results: {}, tbResults: {}, missed: [], xp: 0, xpSent: 0, sent: [], counted: false, combo: 0, best: 0, right: 0, asked: 0 };
-  const persist = () => KEY && store.set(KEY, { ...S, day: T, steps: steps.map((st) => ({ t: st.t, id: st.k.id, again: !!st.again, retry: !!st.retry, tb: !!st.tb })) });
+  const persist = () => KEY && store.set(KEY, { ...S, day: T, steps: steps.map((st) => ({ t: st.t, id: st.k.id, again: !!st.again, retry: !!st.retry, tb: !!st.tb, def: !!st.def })) });
   const saved = KEY && store.get(KEY, null);
   const usable = saved && saved.steps?.every((st) => byId[st.id]) && daysBetween(saved.day, T) <= 7 && saved.i > 0 && saved.i < saved.steps.length;
 
@@ -1219,8 +1246,14 @@ route(/^\/s\/([\w-]+)\/(next|review|quiz|lesson|misses)(?:\/(\d+))?$/, async (id
       $("n").onclick = () => { S.i++; next(); };
       return;
     }
-    const q = st.t === "check" ? meaningQ(d, st.k) : termQ(d, st.k);
+    // Multi-term cards: match all of them right after learning, then one at a time (a different one each time).
+    // A retry after a miss asks it a different way (definition vs. situation).
+    const q = isPair(st.k)
+      ? (st.t === "check" && !st.retry ? matchQ(d, st.k) : pairQ(d, st.k, st.def ? "meaning" : undefined))
+      : st.def ? (st.t === "check" ? termQ(d, st.k) : meaningQ(d, st.k))
+      : st.t === "check" ? meaningQ(d, st.k) : termQ(d, st.k);
     const label = st.tb ? `Throwback · from Lesson ${lessonOf[st.k.id]}` : mode === "learn" ? (st.t === "check" ? "Quick check" : "Recap") : kind === "review" ? "Review" : kind === "misses" ? "Fix your misses" : "Practice";
+    if (q.match) return showMatch(q, st, label);
     frame(`<div class="qbody"><p class="prompt">${q.html}</p>
       <div class="opts">${q.opts.map((o, j) => `<button class="opt" data-j="${j}"><span class="k">${"ABCD"[j]}</span><span>${esc(o)}</span></button>`).join("")}</div>
       <button class="btn ghost idk" id="idk">I don't know</button></div><div id="fb"></div>`, label);
@@ -1228,10 +1261,43 @@ route(/^\/s\/([\w-]+)\/(next|review|quiz|lesson|misses)(?:\/(\d+))?$/, async (id
     app.querySelectorAll(".opt").forEach((b) => (b.onclick = () => { if (!done) { done = true; answer(q, st, b); } }));
     $("idk").onclick = () => { if (!done) { done = true; answer(q, st, null); } };
   }
-  function answer(q, st, btn) {
+  function showMatch(q, st, label) {
+    const pick = q.rows.map(() => null);
+    frame(`<div class="qbody"><p class="prompt">Match each one to its term</p>
+      <div class="match">${q.rows.map((r, i) => `<div class="mrow" data-i="${i}"><p>${esc(r.clue)}</p>
+        <div class="mchips">${q.names.map((n, j) => `<button class="mchip" data-i="${i}" data-j="${j}">${esc(n)}</button>`).join("")}</div></div>`).join("")}</div>
+      <button class="btn primary block" id="mcheck" disabled>Check</button>
+      <button class="btn ghost idk" id="idk">I don't know</button></div><div id="fb"></div>`, label);
+    let done = false;
+    const paint = () => {
+      app.querySelectorAll(".mchip").forEach((b) => b.classList.toggle("sel", pick[+b.dataset.i] === +b.dataset.j));
+      $("mcheck").disabled = pick.some((x) => x === null);
+    };
+    app.querySelectorAll(".mchip").forEach((b) => (b.onclick = () => {
+      if (done) return;
+      const i = +b.dataset.i, j = +b.dataset.j;
+      pick.forEach((x, r) => { if (x === j && r !== i) pick[r] = null; }); // each term goes with one situation
+      pick[i] = j; paint();
+    }));
+    const grade = (idk) => {
+      if (done) return; done = true;
+      let all = !idk;
+      app.querySelectorAll(".mrow").forEach((row) => {
+        const i = +row.dataset.i, right = q.rows[i].ans, ok = !idk && q.names[pick[i]] === right;
+        if (!ok) all = false;
+        row.classList.add(ok ? "right" : "wrong");
+        row.querySelectorAll(".mchip").forEach((b) => { b.disabled = true; if (q.names[+b.dataset.j] === right) b.classList.add("right"); else if (+b.dataset.j === pick[i]) b.classList.add("wrong"); });
+      });
+      $("mcheck").disabled = true;
+      answer(q, st, null, { ok: all, idk });
+    };
+    $("mcheck").onclick = () => grade(false);
+    $("idk").onclick = () => grade(true);
+  }
+  function answer(q, st, btn, forced) {
     S.asked++;
-    const idk = !btn; // "I don't know" counts as wrong, so the word gets re-taught and comes back
-    const ok = !idk && q.opts[btn.dataset.j] === q.ans, k = st.k;
+    const idk = forced ? forced.idk : !btn; // "I don't know" counts as wrong, so the word gets re-taught and comes back
+    const ok = forced ? forced.ok : !idk && q.opts[btn.dataset.j] === q.ans, k = st.k;
     const first = !st.retry && !(k.id in (st.tb ? S.tbResults : S.results));
     app.querySelectorAll(".opt").forEach((x) => { if (q.opts[x.dataset.j] === q.ans) x.classList.add("right"); else if (x !== btn) x.classList.add("dim"); x.disabled = true; });
     if (!ok && btn) btn.classList.add("wrong");
@@ -1242,12 +1308,13 @@ route(/^\/s\/([\w-]+)\/(next|review|quiz|lesson|misses)(?:\/(\d+))?$/, async (id
     else if (mode === "learn" && st.t === "recap" && !(k.id in S.results)) S.results[k.id] = ok && !S.missed.includes(k.id);
     else if (mode === "review" && !(k.id in S.results)) S.results[k.id] = ok;
     if (!ok) {
-      if (mode === "learn" && !st.tb) steps.splice(Math.min(S.i + 3, steps.length), 0, { t: "teach", k, again: true }, { t: st.t, k, retry: true });
-      else steps.push({ t: st.t === "check" ? "recap" : "check", k, retry: true, tb: st.tb });
+      // Comes back asked a different way: a definition question after a situation one, and the other way around.
+      if (mode === "learn" && !st.tb) steps.splice(Math.min(S.i + 3, steps.length), 0, { t: "teach", k, again: true }, { t: st.t, k, retry: true, def: !st.def });
+      else steps.push({ t: st.t === "check" ? "recap" : "check", k, retry: true, tb: st.tb, def: !st.def });
     }
     const praise = S.combo >= 5 ? `${S.combo} in a row!` : ["Nice!", "Correct!", "You got it!", "Yes!"][(Math.random() * 4) | 0];
     $("fb").innerHTML = `<div class="feedback ${ok ? "ok" : "no"}"><h3>${ok ? praise : idk ? "No problem. Here it is" : "Not quite"}</h3>
-      ${ok ? (k.hook ? `<p class="small">${esc(k.hook)}</p>` : "") : `<p><b>${esc(k.term)}</b>: ${esc(k.simple)}</p>${k.confuse ? `<p class="small">${esc(k.confuse)}</p>` : ""}<p class="small muted">It'll come back in a moment.</p>`}
+      ${ok ? (k.hook ? `<p class="small">${esc(k.hook)}</p>` : "") : `${isPair(k) ? k.parts.map((p) => `<p class="small"><b>${esc(p.term)}</b>: ${esc(p.simple)}</p>`).join("") : `<p><b>${esc(k.term)}</b>: ${esc(k.simple)}</p>`}${k.confuse ? `<p class="small">${esc(k.confuse)}</p>` : ""}<p class="small muted">It'll come back in a moment.</p>`}
       <button class="btn ${ok ? "good" : "bad"} block" id="cont">Continue</button></div>`;
     // The panel is pinned to the bottom of the screen, so nothing scrolls. Leave room under the answers for it.
     const c = $("cont"), fb = app.querySelector(".feedback"); c.focus({ preventScroll: true });
@@ -1277,7 +1344,7 @@ route(/^\/s\/([\w-]+)\/(next|review|quiz|lesson|misses)(?:\/(\d+))?$/, async (id
       el.remove();
       const { steps: ss, day, ...rest } = saved;
       S = { ...S, ...rest };
-      steps = ss.map((st) => ({ t: st.t, k: byId[st.id], again: st.again, retry: st.retry, tb: st.tb }));
+      steps = ss.map((st) => ({ t: st.t, k: byId[st.id], again: st.again, retry: st.retry, tb: st.tb, def: st.def }));
       next();
     };
     el.querySelector("#rs-new").onclick = () => { el.remove(); store.del(KEY); next(); };
@@ -1356,7 +1423,7 @@ route(/^\/exam\/([\w-]+)$/, async (id) => {
     const n = Math.min(S.count, p.cards.length + p.qs.length);
     const ai = shuffle([...p.qs]).slice(0, Math.min(p.qs.length, Math.ceil(n * 0.5))).map(aiQ);
     d.seen = S.from === "all" ? null : new Set(d.cards.filter((k) => isLearned(d, k)).map((k) => k.id));
-    const cardQs = shuffle([...p.cards]).slice(0, n - ai.length).map((k, j) => [meaningQ, termQ, tfQ][j % 3](d, k));
+    const cardQs = shuffle([...p.cards]).slice(0, n - ai.length).map((k, j) => (isPair(k) ? pairQ(d, k) : [meaningQ, termQ, tfQ][j % 3](d, k)));
     const qs = shuffle(ai.concat(cardQs)), answers = new Array(qs.length).fill(null);
     const endAt = S.timer ? Date.now() + qs.length * 60e3 : 0;
     let i = 0, timerId = null;

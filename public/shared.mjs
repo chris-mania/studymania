@@ -194,7 +194,7 @@ export function cleanCard(c) {
     traps: arr(c.traps, 3, 500), confuse: str(c.confuse, 400), related: arr(c.related, 6, 100),
     formula: str(c.formula, 240), question: str(c.question, 300),
     // "pair" card: 2-3 small look-alike terms learned together
-    parts: Array.isArray(c.parts) ? c.parts.filter((p) => p && p.term).slice(0, 3).map((p) => ({ term: str(p.term, 100), simple: str(p.simple || p.definition, 300), example: str(p.example, 400) })) : [],
+    parts: Array.isArray(c.parts) ? c.parts.filter((p) => p && p.term).slice(0, 3).map((p) => ({ term: str(p.term, 100), simple: str(p.simple || p.definition, 300), example: str(p.example, 400), scenario: str(p.scenario, 400) })) : [],
   };
 }
 export function cleanQuestion(q) {

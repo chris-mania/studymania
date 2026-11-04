@@ -13,7 +13,8 @@ WHAT TO MAKE A CARD FOR
 
 PAIR CARDS (less to memorize)
 - If 2-3 terms are small, easy and often mixed up (like "groupthink" and "social loafing"), make ONE pair card. At most one pair card per topic. Big concepts and formulas always get their own card.
-- Pair card: "term" is "Groupthink vs. Social Loafing"; "simple" gives both meanings in one line; "parts" lists each one: [{"term":"","simple":"","example":""}]; "question" is a short scenario that fits exactly one of them; "answer" is that term's name; "traps" are the other term name(s) in the pair.
+- Pair card: "term" is "Groupthink vs. Social Loafing"; "simple" gives both meanings in one line; "parts" lists each one: [{"term":"","simple":"","example":"","scenario":""}]; "question" is a short scenario that fits exactly one of them; "answer" is that term's name; "traps" are the other term name(s) in the pair.
+- Each part's "scenario" is a NEW tricky situation (different from its "example") that fits ONLY that term but is close enough that the other terms in the pair seem possible, so you have to know the exact difference. Never use any term's name in it. The app quizzes every part, so make each one equally hard.
 - Normal cards: "parts" is [].
 
 CARD FIELDS (keep every card as complete as the first one)
@@ -34,7 +35,7 @@ CARD FIELDS (keep every card as complete as the first one)
 - "question": usually "". Only for a sequence or "which is NOT" item: the exact question to ask, with "answer" as the right choice.
 
 EXAM QUESTIONS
-For each topic, write 2-3 questions like a professor would put on a test: apply an idea to a short scenario, say which concept a situation shows, compare two ideas, or calculate something. 4 choices, near-miss wrong ones, only terms from that topic or earlier ones. "answer" must be copied exactly from a choice. "why" explains it in one sentence. Before finishing, check that exactly one choice is correct.
+For each topic, write 2-3 questions like a professor would put on a test (for pair cards, test different terms of the pair, not always the first one): apply an idea to a short scenario, say which concept a situation shows, compare two ideas, or calculate something. 4 choices, near-miss wrong ones, only terms from that topic or earlier ones. "answer" must be copied exactly from a choice. "why" explains it in one sentence. Before finishing, check that exactly one choice is correct.
 
 HOW TO SEND IT
 - First count the cards. 30 or fewer: send them all in one block. More than 30: send 30 per block and end each block's message with only "Say NEXT for more." When I say NEXT, continue from the next card number.
