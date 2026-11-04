@@ -229,7 +229,12 @@ function authView(mode, { upgrade } = {}) {
     </form>
     ${upgrade ? "" : `<div class="or"><span>or</span></div>
     <button class="btn block" id="guest">Use without an account</button>
-    <p class="muted small" style="text-align:center;margin-top:8px">Saves only on this device. You can make an account later.</p>`}`;
+    <p class="muted small" style="text-align:center;margin-top:8px">Saves only on this device. You can make an account later.</p>
+    <section class="more-apps" aria-labelledby="more-apps-h">
+      <h2 id="more-apps-h">More apps by CBM Studios</h2>
+      <a class="app-link" href="https://fantasymania.org/" target="_blank" rel="noopener"><img src="/icons/app-fantasy.png" alt="" width="44" height="44"><span><b>Fantasy Mania</b><small>Free fantasy football ratings, projections and trade help.</small></span><i>Open</i></a>
+      <a class="app-link" href="https://retrobaseball.pages.dev/" target="_blank" rel="noopener"><img src="/icons/app-retro.png" alt="" width="44" height="44"><span><b>Retro Baseball</b><small>Play a retro baseball game.</small></span><i>Open</i></a>
+    </section>`}`;
     if (!upgrade) {
       $("t-up").onclick = () => { mode = "signup"; draw(); };
       $("t-in").onclick = () => { mode = "login"; draw(); };
