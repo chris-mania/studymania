@@ -28,7 +28,8 @@ function pubUser(u, day) {
 }
 function todayInfo(d, day) {
   const recent = Object.entries(d.days).filter(([k]) => k > addDays(day, -28)).sort().map(([k, v]) => ({ day: k, ...v }));
-  return { xp: d.days[day]?.xp || 0, rounds: d.days[day]?.rounds || 0, recent };
+  const t = d.days[day] || {};
+  return { xp: t.xp || 0, rounds: t.rounds || 0, lessons: t.lessons || 0, reviews: t.reviews || 0, recent };
 }
 function planFields(b, c = {}) {
   const int = (v, lo, hi, def) => { const n = parseInt(v, 10); return isNaN(n) ? def : Math.min(hi, Math.max(lo, n)); };
@@ -89,6 +90,9 @@ export async function localApi(path, method, body, day) {
   if (path === "/study" && method === "POST") {
     const c = d.courses.find((x) => x.id === b.course_id);
     if (!c) fail("That subject wasn't found.", 404);
+    d.rounds ||= [];
+    if (b.round_id && d.rounds.includes(b.round_id)) return { user: pubUser(d.user, day), today: todayInfo(d, day), duplicate: true };
+    if (b.round_id) { d.rounds.push(b.round_id); if (d.rounds.length > 300) d.rounds = d.rounds.slice(-300); }
     for (const r of b.results || []) {
       if (!c.cards.some((k) => k.id === r.card_id)) continue;
       const prev = c.progress[r.card_id];
@@ -107,7 +111,8 @@ export async function localApi(path, method, body, day) {
       if (u.streak % 7 === 0 && (u.freezes || 0) < 2) { u.freezes = (u.freezes || 0) + 1; earnedFreeze = true; }
       u.best_streak = Math.max(u.best_streak || 0, u.streak); u.last_study_day = day;
     }
-    d.days[day] = { xp: (d.days[day]?.xp || 0) + xp, rounds: (d.days[day]?.rounds || 0) + (counts ? 1 : 0) };
+    const t = d.days[day] || {}, isLesson = counts && b.kind === "lesson";
+    d.days[day] = { xp: (t.xp || 0) + xp, rounds: (t.rounds || 0) + (counts ? 1 : 0), lessons: (t.lessons || 0) + (isLesson ? 1 : 0), reviews: (t.reviews || 0) + (counts && !isLesson ? 1 : 0) };
     save(d); return { user: pubUser(u, day), today: todayInfo(d, day), used_freeze: usedFreeze, earned_freeze: earnedFreeze };
   }
   if (path.startsWith("/push")) fail("Daily reminders need an account. Create one in Settings.");

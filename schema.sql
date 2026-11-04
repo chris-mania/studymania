@@ -115,8 +115,13 @@ CREATE TABLE IF NOT EXISTS days (
   day TEXT NOT NULL,
   xp INTEGER DEFAULT 0,
   rounds INTEGER DEFAULT 0,
+  lessons INTEGER DEFAULT 0,              -- finished lessons (the daily goal)
+  reviews INTEGER DEFAULT 0,              -- finished review rounds / practice exams
   PRIMARY KEY (user_id, day)
 );
+
+-- Every finished round has an id so a retried save can never count twice.
+CREATE TABLE IF NOT EXISTS study_rounds (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, day TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS idx_days_day ON days(day);
 
 CREATE TABLE IF NOT EXISTS push_subs (

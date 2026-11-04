@@ -129,9 +129,9 @@ async function courseSummaries(env, userId, day) {
 }
 
 async function today(env, userId, day) {
-  const row = await env.DB.prepare("SELECT xp, rounds FROM days WHERE user_id = ? AND day = ?").bind(userId, day).first();
+  const row = await env.DB.prepare("SELECT xp, rounds, lessons, reviews FROM days WHERE user_id = ? AND day = ?").bind(userId, day).first();
   const { results } = await env.DB.prepare("SELECT day, xp, rounds FROM days WHERE user_id = ? AND day > ? ORDER BY day").bind(userId, addDays(day, -28)).all();
-  return { xp: row?.xp || 0, rounds: row?.rounds || 0, recent: results };
+  return { xp: row?.xp || 0, rounds: row?.rounds || 0, lessons: row?.lessons || 0, reviews: row?.reviews || 0, recent: results };
 }
 
 const readBody = async (req) => { try { return await req.json(); } catch { return {}; } };
@@ -442,6 +442,13 @@ async function api(req, env, url) {
     const b = await readBody(req);
     const course = await ownCourse(env, String(b.course_id || ""), user.id);
     if (!course) return err("That subject wasn't found.", 404);
+    // Each save carries an id. If the same save arrives twice (bad signal, retry), count it once.
+    const rid = str(b.round_id, 80);
+    if (rid) {
+      const seen = await env.DB.prepare("SELECT id FROM study_rounds WHERE id = ?").bind(user.id + ":" + rid).first();
+      if (seen) return json({ user: publicUser(user, day), today: await today(env, user.id, day), duplicate: true });
+      await env.DB.prepare("INSERT INTO study_rounds (id, user_id, day) VALUES (?, ?, ?)").bind(user.id + ":" + rid, user.id, day).run();
+    }
     const results = Array.isArray(b.results) ? b.results.slice(0, 300) : [];
     const stmts = [];
     for (const r of results) {
@@ -469,8 +476,10 @@ async function api(req, env, url) {
       else streak = st.streak ? streak + 1 : 1;
       if (streak % 7 === 0 && freezes < 2) { freezes += 1; earnedFreeze = true; }
     }
-    stmts.push(env.DB.prepare("INSERT INTO days (user_id, day, xp, rounds) VALUES (?, ?, ?, ?) ON CONFLICT(user_id, day) DO UPDATE SET xp = xp + excluded.xp, rounds = rounds + excluded.rounds")
-      .bind(user.id, day, xp, counts ? 1 : 0));
+    const isLesson = counts && b.kind === "lesson", isReview = counts && !isLesson;
+    stmts.push(env.DB.prepare(`INSERT INTO days (user_id, day, xp, rounds, lessons, reviews) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(user_id, day) DO UPDATE SET
+        xp = xp + excluded.xp, rounds = rounds + excluded.rounds, lessons = lessons + excluded.lessons, reviews = reviews + excluded.reviews`)
+      .bind(user.id, day, xp, counts ? 1 : 0, isLesson ? 1 : 0, isReview ? 1 : 0));
     if (counts) stmts.push(env.DB.prepare("UPDATE users SET xp = xp + ?, streak = ?, freezes = ?, best_streak = MAX(best_streak, ?), last_study_day = ? WHERE id = ?").bind(xp, streak, freezes, streak, day, user.id));
     else stmts.push(env.DB.prepare("UPDATE users SET xp = xp + ? WHERE id = ?").bind(xp, user.id));
     await runBatch(env, stmts);

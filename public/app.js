@@ -19,6 +19,19 @@ const store = {
 const COLORS = 8;
 const colorVar = (i) => `var(--c${(i || 0) % COLORS})`;
 const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
+const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
+
+// Daily goal = lessons finished today. Once every lesson in every subject is learned,
+// review rounds and practice exams count instead (there's nothing new left to learn).
+function goalInfo() {
+  const t = ME.today, goal = ME.user.daily_goal, lessonsLeft = ME.courses.some((c) => c.next);
+  const did = lessonsLeft ? t.lessons || 0 : t.rounds || 0;
+  return { goal, did, unit: lessonsLeft ? "lesson" : "round", done: did >= goal };
+}
+// "Skip review for today": reviews come back tomorrow.
+const skipKey = () => "sm-skiprev-" + todayStr();
+const reviewSkipped = (cid) => store.get(skipKey(), []).includes(cid);
+const skipReview = (cid) => store.set(skipKey(), [...new Set([...store.get(skipKey(), []), cid])]);
 const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
 
@@ -126,6 +139,7 @@ const examText = (c) => {
 
 // ---------- offline outbox (account mode) ----------
 async function postStudy(body) {
+  body.round_id ||= uid();
   try { return await api("/study", { method: "POST", body }); }
   catch (e) {
     if (GUEST || (e.status && e.status < 500)) throw e;
@@ -465,9 +479,9 @@ function upNext() {
   const cs = ME.courses.filter((c) => c.total).sort((a, b) => (a.exam_date || a.finish_by || "9999").localeCompare(b.exam_date || b.finish_by || "9999"));
   const f = (fn) => cs.find(fn);
   let c;
-  if ((c = f((x) => x.due >= 3))) return { c, k: "review", title: "Review", sub: `${Math.min(12, c.due)} words that are due · about ${Math.max(2, Math.round(Math.min(12, c.due) * 0.3))} min` };
-  if ((c = f((x) => x.plan.todayLeft > 0 && x.next)) || (c = f((x) => x.due > 0)) || (c = f((x) => x.next))) {
-    if (c.next && (c.plan.todayLeft > 0 || !c.due)) return { c, k: "next", title: `Lesson ${c.next.n} · ${c.next.topic}`, sub: `${plural(c.next.words, "new word")}${c.learned ? " + 3 throwbacks" : ""} · about ${c.next.words + 1} min` };
+  if ((c = f((x) => x.due >= 3 && !reviewSkipped(x.id)))) return { c, k: "review", title: "Review", sub: `${Math.min(12, c.due)} words that are due · about ${Math.max(2, Math.round(Math.min(12, c.due) * 0.3))} min` };
+  if ((c = f((x) => x.plan.todayLeft > 0 && x.next)) || (c = f((x) => x.due > 0 && !reviewSkipped(x.id))) || (c = f((x) => x.next))) {
+    if (c.next && (c.plan.todayLeft > 0 || !c.due || reviewSkipped(c.id))) return { c, k: "next", title: `Lesson ${c.next.n} · ${c.next.topic}`, sub: `${plural(c.next.words, "new word")}${c.learned ? " + 3 throwbacks" : ""} · about ${c.next.words + 1} min` };
     return { c, k: "review", title: "Review", sub: `${plural(Math.min(12, c.due), "word")} due` };
   }
   if ((c = cs[0])) return c.plan.phase === "review" ? { c, k: "exam", title: "Practice exam", sub: "Final sweep: see what still needs work" } : { c, k: "quiz", title: "Practice quiz", sub: "10 quick questions on what you've learned" };
@@ -480,12 +494,12 @@ route(/^\/$/, () => {
   flushOutbox();
   const { user, courses, today } = ME;
   if (!GUEST && !user.username) setTimeout(() => usernameSheet(() => render()), 50);
-  const goal = user.daily_goal, did = today.rounds, frac = Math.min(1, did / goal), C = 2 * Math.PI * 46;
+  const G = goalInfo(), goal = G.goal, did = G.did, frac = Math.min(1, did / goal), C = 2 * Math.PI * 46;
   const lit = user.last_study_day === todayStr();
   const days = Array.from({ length: 7 }, (_, i) => addDays(todayStr(), i - 6));
   const hit = new Set(today.recent.filter((r) => r.rounds > 0).map((r) => r.day));
   const nx = upNext();
-  const items = courses.filter((c) => c.total && c.id !== nx?.c.id).map((c) => ({ c, lessons: c.plan.todayLeft, due: c.due, review: c.plan.phase === "review" })).filter((x) => x.lessons || x.due || x.review);
+  const items = courses.filter((c) => c.total && c.id !== nx?.c.id).map((c) => ({ c, lessons: c.plan.todayLeft, due: reviewSkipped(c.id) ? 0 : c.due, review: c.plan.phase === "review" })).filter((x) => x.lessons || x.due || x.review);
   const gap = user.last_study_day ? daysBetween(user.last_study_day, todayStr()) : 0;
   const back = user.freeze_needed ? `<div class="notice">❄️ <b style="display:inline">You missed ${plural(user.freeze_needed, "day")}.</b> A streak freeze will save your ${user.streak}-day streak as soon as you finish a lesson today.</div>`
     : !user.streak && gap >= 2 && user.best_streak ? `<div class="notice">👋 <b style="display:inline">Welcome back.</b> Your streak reset, but your progress didn't. One lesson today gets you rolling again.</div>` : "";
@@ -493,14 +507,15 @@ route(/^\/$/, () => {
   app.innerHTML = `${topbar(null, { stats: false })}${guestBanner()}
   <div class="stack">
     <section class="card hero-card">
-      <div class="streak-ring ${frac >= 1 ? "done" : ""}" role="img" aria-label="${user.streak}-day streak. ${did} of ${goal} rounds today.">
+      <div class="streak-ring ${frac >= 1 ? "done" : ""}" role="img" aria-label="${user.streak}-day streak. ${did} of ${goal} ${G.unit}s today.">
         <svg viewBox="0 0 104 104"><circle class="track" cx="52" cy="52" r="46" fill="none" stroke-width="8"/>
           <circle class="fill" cx="52" cy="52" r="46" fill="none" stroke-width="8" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C}"/></svg>
         <div class="hflame ${lit ? "lit" : ""}">🔥</div>
       </div>
       <div class="hero-text">
         <div class="streak-num">${user.streak}<span> day streak</span></div>
-        <p class="muted">${lit ? (did >= goal ? "Daily goal done. Nice." : `${did} of ${goal} rounds today`) : user.streak ? "Study today to keep it going" : "Finish a lesson to start one"}</p>
+        <p class="${G.done ? "" : "muted"}" style="${G.done ? "color:var(--good);font-weight:700" : ""}">${G.done ? `✓ Daily goal done: ${did} of ${goal} ${G.unit}s` : `Daily goal: ${did} of ${goal} ${G.unit}s`}</p>
+        <p class="muted small" style="margin-top:-4px">${G.done ? "Anything more today is a bonus." : lit ? `${plural(goal - did, G.unit)} to go. Your streak is safe for today.` : user.streak ? "Finish a lesson today to keep your streak." : "Finish a lesson to start a streak."}</p>
         <div class="row" style="gap:6px;flex-wrap:wrap"><span class="pill xp-pill">⚡ ${user.xp} XP</span>${user.freezes ? `<span class="pill" title="Streak freezes: each one covers a missed day">❄️ ${user.freezes}</span>` : ""}</div>
       </div>
       <div class="week">${days.map((d) => `<div class="dayc ${hit.has(d) ? "hit" : ""} ${d === todayStr() ? "now" : ""}"><i>${hit.has(d) ? "🔥" : ""}</i>${"SMTWTFS"[new Date(d + "T12:00").getDay()]}</div>`).join("")}</div>
@@ -511,8 +526,8 @@ route(/^\/$/, () => {
         <span class="kicker">Up next · ${esc(nx.c.name)}</span>
         <span class="un-title">${esc(nx.title)}</span>
         <span class="un-sub">${esc(nx.sub)}</span>
-        <span class="btn primary block un-btn">${did ? "Keep going" : "Start"}</span>
-      </a>` : !courses.length ? `<a class="upnext" href="#/add"><span class="kicker">Get started</span><span class="un-title">Add your first subject</span><span class="un-sub">Paste your notes into any AI with our prompt. Takes about 2 minutes.</span><span class="btn primary block un-btn">Add a subject</span></a>` : ""}
+        <span class="btn primary block un-btn">${G.done ? "Bonus round" : did ? "Keep going" : "Start"}</span>
+      </a>${nx.k === "review" ? `<button class="btn ghost small" id="skip-rev" style="margin-top:-6px">Skip review for today. Go to a lesson instead</button>` : ""}` : !courses.length ? `<a class="upnext" href="#/add"><span class="kicker">Get started</span><span class="un-title">Add your first subject</span><span class="un-sub">Paste your notes into any AI with our prompt. Takes about 2 minutes.</span><span class="btn primary block un-btn">Add a subject</span></a>` : ""}
     ${items.length ? `<section class="stack" style="gap:8px"><h3>Also today</h3>
       ${items.map((x) => `<a class="todo" href="#${x.lessons ? `/s/${x.c.id}/next` : x.due ? `/s/${x.c.id}/review` : `/exam/${x.c.id}`}" style="--sc:${colorVar(x.c.color)}">
         <span class="dot"></span><div class="grow"><b>${esc(x.c.name)}</b><span class="muted small">${[x.lessons ? plural(x.lessons, "lesson") : "", x.due ? `${x.due} to review` : "", x.review && !x.lessons && !x.due ? "Practice exam" : ""].filter(Boolean).join(" · ")}</span></div><span class="go-arrow">›</span></a>`).join("")}
@@ -535,6 +550,7 @@ route(/^\/$/, () => {
     app.querySelectorAll(".bar i[data-w]").forEach((i) => (i.style.width = i.dataset.w + "%"));
   }, 60));
   wireSetup();
+  if ($("skip-rev")) $("skip-rev").onclick = () => { skipReview(nx.c.id); toast("Review skipped for today. Those words come back tomorrow."); render(); };
   loadLeaderPreview();
 });
 
@@ -972,7 +988,7 @@ route(/^\/s\/([\w-]+)\/(next|review|quiz|lesson|misses)(?:\/(\d+))?$/, async (id
     const list = pending(), frac = S.i / steps.length, counts = frac >= COUNTS_AT && !S.counted;
     const xp = S.xp - S.xpSent;
     if (list.length || xp || counts) {
-      try { await postStudy({ course_id: id, results: list.map(({ tb, ...r }) => r), xp, counts }); markSent(list); S.xpSent = S.xp; if (counts) S.counted = true; } catch (e) { toast(e.message); }
+      try { await postStudy({ course_id: id, kind: mode === "learn" ? "lesson" : "review", results: list.map(({ tb, ...r }) => r), xp, counts }); markSent(list); S.xpSent = S.xp; if (counts) S.counted = true; } catch (e) { toast(e.message); }
     }
     persist();
     await loadMe().catch(() => {});
@@ -992,18 +1008,22 @@ route(/^\/s\/([\w-]+)\/(next|review|quiz|lesson|misses)(?:\/(\d+))?$/, async (id
     const q = st.t === "check" ? meaningQ(d, st.k) : termQ(d, st.k);
     const label = st.tb ? `Throwback · from Lesson ${lessonOf[st.k.id]}` : mode === "learn" ? (st.t === "check" ? "Quick check" : "Recap") : kind === "review" ? "Review" : kind === "misses" ? "Fix your misses" : "Practice";
     frame(`<div class="qbody"><p class="prompt">${q.html}</p>
-      <div class="opts">${q.opts.map((o, j) => `<button class="opt" data-j="${j}"><span class="k">${"ABCD"[j]}</span><span>${esc(o)}</span></button>`).join("")}</div></div><div id="fb"></div>`, label);
+      <div class="opts">${q.opts.map((o, j) => `<button class="opt" data-j="${j}"><span class="k">${"ABCD"[j]}</span><span>${esc(o)}</span></button>`).join("")}</div>
+      <button class="btn ghost idk" id="idk">I don't know</button></div><div id="fb"></div>`, label);
     let done = false;
     app.querySelectorAll(".opt").forEach((b) => (b.onclick = () => { if (!done) { done = true; answer(q, st, b); } }));
+    $("idk").onclick = () => { if (!done) { done = true; answer(q, st, null); } };
   }
   function answer(q, st, btn) {
     S.asked++;
-    const ok = q.opts[btn.dataset.j] === q.ans, k = st.k;
+    const idk = !btn; // "I don't know" counts as wrong, so the word gets re-taught and comes back
+    const ok = !idk && q.opts[btn.dataset.j] === q.ans, k = st.k;
     const first = !st.retry && !(k.id in (st.tb ? S.tbResults : S.results));
     app.querySelectorAll(".opt").forEach((x) => { if (q.opts[x.dataset.j] === q.ans) x.classList.add("right"); else if (x !== btn) x.classList.add("dim"); x.disabled = true; });
-    if (!ok) btn.classList.add("wrong");
+    if (!ok && btn) btn.classList.add("wrong");
+    if ($("idk")) $("idk").disabled = true;
     if (ok) { S.combo++; S.best = Math.max(S.best, S.combo); S.right++; S.xp += first ? 10 : 5; chime("good"); buzz(15); }
-    else { S.combo = 0; chime("bad"); buzz([30, 40, 30]); if (!S.missed.includes(k.id)) S.missed.push(k.id); }
+    else { S.combo = 0; if (!idk) { chime("bad"); buzz([30, 40, 30]); } if (!S.missed.includes(k.id)) S.missed.push(k.id); }
     if (st.tb) { if (!(k.id in S.tbResults)) S.tbResults[k.id] = ok; }
     else if (mode === "learn" && st.t === "recap" && !(k.id in S.results)) S.results[k.id] = ok && !S.missed.includes(k.id);
     else if (mode === "review" && !(k.id in S.results)) S.results[k.id] = ok;
@@ -1012,7 +1032,7 @@ route(/^\/s\/([\w-]+)\/(next|review|quiz|lesson|misses)(?:\/(\d+))?$/, async (id
       else steps.push({ t: st.t === "check" ? "recap" : "check", k, retry: true, tb: st.tb });
     }
     const praise = S.combo >= 5 ? `${S.combo} in a row!` : ["Nice!", "Correct!", "You got it!", "Yes!"][(Math.random() * 4) | 0];
-    $("fb").innerHTML = `<div class="feedback ${ok ? "ok" : "no"}"><h3>${ok ? praise : "Not quite"}</h3>
+    $("fb").innerHTML = `<div class="feedback ${ok ? "ok" : "no"}"><h3>${ok ? praise : idk ? "No problem. Here it is" : "Not quite"}</h3>
       ${ok ? (k.hook ? `<p class="small">${esc(k.hook)}</p>` : "") : `<p><b>${esc(k.term)}</b>: ${esc(k.simple)}</p>${k.confuse ? `<p class="small">${esc(k.confuse)}</p>` : ""}<p class="small muted">It'll come back in a moment.</p>`}
       <button class="btn ${ok ? "good" : "bad"} block" id="cont">Continue</button></div>`;
     // The panel is pinned to the bottom of the screen, so nothing scrolls. Leave room under the answers for it.
@@ -1028,7 +1048,7 @@ route(/^\/s\/([\w-]+)\/(next|review|quiz|lesson|misses)(?:\/(\d+))?$/, async (id
     if (kind === "misses") delete MISSES[id];
     if (KEY) store.del(KEY);
     const tbCount = Object.keys(S.tbResults).length;
-    const r = await saveRound({ course_id: id, results: list.map(({ tb, ...x }) => x), xp: S.xp - S.xpSent, counts: !S.counted });
+    const r = await saveRound({ course_id: id, kind: mode === "learn" ? "lesson" : "review", results: list.map(({ tb, ...x }) => x), xp: S.xp - S.xpSent, counts: !S.counted });
     celebrate(r, {
       xp: S.xp, accuracy, best: S.best,
       text: mode === "learn" ? `You learned ${plural(lesson.cards.length, "new word")} in ${esc(lesson.topic)}${tbCount ? ` and refreshed ${plural(tbCount, "older one")}` : ""}.` : `${S.right} of ${S.asked} right.`,
@@ -1051,32 +1071,40 @@ route(/^\/s\/([\w-]+)\/(next|review|quiz|lesson|misses)(?:\/(\d+))?$/, async (id
 });
 
 async function saveRound(body) {
-  const T = todayStr(), before = { rounds: ME.today.rounds, lit: ME.user.last_study_day === T, goal: ME.user.daily_goal };
+  const T = todayStr(), g0 = goalInfo(), before = { goalDone: g0.done, lit: ME.user.last_study_day === T };
   let saved = null;
   try { saved = await postStudy(body); } catch (e) { toast(e.message); }
   if (saved) { ME.user = { ...ME.user, ...saved.user }; ME.today = saved.today; }
   else if (!GUEST) {
     ME.user.xp += body.xp;
-    if (body.counts !== false) { ME.today.rounds++; if (!before.lit) { ME.user.streak = (ME.user.streak || 0) + 1; ME.user.last_study_day = T; } }
+    if (body.counts !== false) {
+      ME.today.rounds++; if (body.kind === "lesson") ME.today.lessons = (ME.today.lessons || 0) + 1; else ME.today.reviews = (ME.today.reviews || 0) + 1;
+      if (!before.lit) { ME.user.streak = (ME.user.streak || 0) + 1; ME.user.last_study_day = T; }
+    }
     toast("Saved on this phone. It'll sync when you're back online.");
   }
-  loadMe().catch(() => {});
+  try { await loadMe(); } catch {}
   return { ...before, used_freeze: saved?.used_freeze || 0, earned_freeze: !!saved?.earned_freeze };
 }
 function celebrate(before, { xp, accuracy, best, text, title }) {
-  const goalHit = before.rounds < ME.user.daily_goal && ME.today.rounds >= ME.user.daily_goal, streakUp = !before.lit && ME.user.last_study_day === todayStr();
+  const G = goalInfo(), goalHit = !before.goalDone && G.done, streakUp = !before.lit && ME.user.last_study_day === todayStr();
   const emoji = goalHit ? "🏆" : streakUp ? "🔥" : accuracy === 100 ? "🎯" : "⭐";
   const head = goalHit ? "Daily goal complete!" : streakUp ? `${ME.user.streak}-day streak!` : title;
   const extra = before.used_freeze ? `<div class="notice">❄️ A streak freeze covered the day you missed. Your streak is safe.</div>` : before.earned_freeze ? `<div class="notice ok">❄️ <b style="display:inline">You earned a streak freeze!</b> It'll save your streak if you ever miss a day.</div>` : "";
+  const due = ME.courses.reduce((a, c) => a + (reviewSkipped(c.id) ? 0 : c.due), 0), reviewed = (ME.today.reviews || 0) > 0;
   app.innerHTML = `<div class="sess"><div class="cele">
     <div class="big-emoji">${emoji}</div><h1>${head}</h1>
     <p class="muted">${text} ${best >= 3 ? `Best run: ${best} in a row.` : ""}</p>
     <div class="tiles"><div class="tile xp"><b id="xpn">0</b><span>XP</span></div><div class="tile fl"><b>${ME.user.streak}</b><span>Streak</span></div><div class="tile acc"><b>${accuracy}%</b><span>Correct</span></div></div>
     ${extra}
-    <p class="muted small">Today: ${ME.today.rounds} of ${ME.user.daily_goal} rounds ${ME.today.rounds >= ME.user.daily_goal ? "✓" : ""}</p>
-  </div><div class="footbtn stack"><button class="btn primary block" id="more">${ME.today.rounds >= ME.user.daily_goal ? "One more (bonus)" : "Keep going"}</button><a class="btn block" href="#/">Done for now</a></div></div>`;
+    <div class="todaybox">
+      <div class="${G.done ? "ok" : ""}"><span>${G.done ? "✅" : "⬜"}</span><b>Daily goal</b><span class="grow"></span>${Math.min(G.did, G.goal)} of ${plural(G.goal, G.unit)}${G.did > G.goal ? ` <span class="pill acc">+${G.did - G.goal} bonus</span>` : ""}</div>
+      <div class="${reviewed || !due ? "ok" : ""}"><span>${reviewed ? "✅" : due ? "⬜" : "✅"}</span><b>Reviews</b><span class="grow"></span>${reviewed ? "Done today" : due ? `${due} words waiting` : "Nothing due"}</div>
+    </div>
+    <p class="muted small">${G.done ? "Today's goal is done. Anything more is a bonus that puts you ahead." : `${plural(G.goal - G.did, "more " + G.unit)} to hit today's goal.`}</p>
+  </div><div class="footbtn stack"><button class="btn primary block" id="more">${G.done ? "Do a bonus round" : `Next ${G.unit} (${G.goal - G.did} to go)`}</button><a class="btn block" href="#/">Done for now</a></div></div>`;
   countUp($("xpn"), xp); chime("win"); buzz([20, 60, 20, 60, 40]); confetti(goalHit || streakUp ? 1.6 : 0.8);
-  $("more").onclick = async () => { await loadMe().catch(() => {}); startBest(); };
+  $("more").onclick = () => startBest();
 }
 
 // ---------- practice exam ----------
@@ -1134,25 +1162,27 @@ route(/^\/exam\/([\w-]+)$/, async (id) => {
         <div class="kicker">Question ${i + 1} of ${qs.length} · ${esc(q.topic || "")}</div>
         <div class="qbody"><p class="prompt">${q.html}</p>
         <div class="opts">${q.opts.map((o, j) => `<button class="opt ${answers[i] === j ? "sel" : ""}" data-j="${j}"><span class="k">${"ABCDE"[j]}</span><span>${esc(o)}</span></button>`).join("")}</div></div>
+        <button class="btn ghost idk ${answers[i] === -1 ? "on" : ""}" id="e-idk">I don't know</button>
         <div class="footbtn row">${i ? `<button class="btn" id="prev" aria-label="Previous question">◀</button>` : ""}<button class="btn primary grow" id="nx" ${answers[i] === null ? "disabled" : ""}>${i === qs.length - 1 ? "Finish exam" : "Next"}</button></div></div>`;
       if (endAt) tick();
       let armed = false;
       $("x").onclick = () => { if (armed) { clearInterval(timerId); return go(`/c/${id}`); } armed = true; toast("Tap ✕ again to quit the exam."); };
-      app.querySelectorAll(".opt").forEach((b) => (b.onclick = () => { answers[i] = +b.dataset.j; app.querySelectorAll(".opt").forEach((x) => x.classList.toggle("sel", x === b)); $("nx").disabled = false; buzz(8); }));
+      app.querySelectorAll(".opt").forEach((b) => (b.onclick = () => { answers[i] = +b.dataset.j; app.querySelectorAll(".opt").forEach((x) => x.classList.toggle("sel", x === b)); $("e-idk").classList.remove("on"); $("nx").disabled = false; buzz(8); }));
+      $("e-idk").onclick = () => { answers[i] = -1; app.querySelectorAll(".opt").forEach((x) => x.classList.remove("sel")); $("e-idk").classList.add("on"); $("nx").disabled = false; };
       if ($("prev")) $("prev").onclick = () => { i--; show(); };
       $("nx").onclick = () => { if (i < qs.length - 1) { i++; show(); } else done(); };
     };
     const done = async () => {
       clearInterval(timerId);
-      const graded = qs.map((q, j) => ({ q, pick: answers[j], ok: answers[j] !== null && q.opts[answers[j]] === q.ans }));
+      const graded = qs.map((q, j) => ({ q, pick: answers[j] >= 0 ? answers[j] : null, ok: answers[j] >= 0 && q.opts[answers[j]] === q.ans }));
       const score = graded.filter((g) => g.ok).length, pct = Math.round((score / qs.length) * 100);
       const byTopic = {};
       graded.forEach((g) => { const t = g.q.topic || "General"; byTopic[t] ||= { r: 0, n: 0 }; byTopic[t].n++; if (g.ok) byTopic[t].r++; });
       const missCards = [...new Set(graded.filter((g) => !g.ok && g.q.k).map((g) => g.q.k.id))];
       MISSES[id] = missCards;
-      const before = await saveRound({ course_id: id, xp: score * 5 + (pct === 100 ? 20 : 0), exam: { score, total: qs.length },
+      const before = await saveRound({ course_id: id, kind: "exam", xp: score * 5 + (pct === 100 ? 20 : 0), exam: { score, total: qs.length },
         results: missCards.filter((cid) => isLearned(d, { id: cid })).map((card_id) => ({ card_id, ok: false, mode: "review" })) });
-      const goalHit = before.rounds < ME.user.daily_goal && ME.today.rounds >= ME.user.daily_goal;
+      const goalHit = !before.goalDone && goalInfo().done;
       const verdict = pct >= 90 ? "You're ready. 🎯" : pct >= 80 ? "Looking strong." : pct >= 70 ? "Getting there." : "Good practice. Study the misses.";
       app.innerHTML = `${topbar("/c/" + id)}<div class="stack">
         <div class="cele" style="padding:10px 0"><div class="big-emoji">${pct >= 80 ? "🏆" : pct >= 60 ? "📈" : "💪"}</div><h1>${pct}%</h1><p class="muted">${score} of ${qs.length} right. ${verdict}${goalHit ? " Daily goal done!" : ""}</p></div>
@@ -1163,7 +1193,7 @@ route(/^\/exam\/([\w-]+)$/, async (id) => {
         ${missCards.length ? `<button class="btn primary block" id="r-miss">Study the ${missCards.length === 1 ? "word" : missCards.length + " words"} you missed</button>` : ""}
         ${graded.some((g) => !g.ok) ? `<h3>What you missed</h3>${graded.filter((g) => !g.ok).map((g) => `<div class="card stack" style="gap:8px">
           <p class="prompt" style="font-size:18px">${g.q.html}</p>
-          ${g.pick !== null ? `<p class="small" style="color:var(--bad)">✗ You said: ${esc(g.q.opts[g.pick])}</p>` : `<p class="small muted">No answer</p>`}
+          ${g.pick !== null ? `<p class="small" style="color:var(--bad)">✗ You said: ${esc(g.q.opts[g.pick])}</p>` : `<p class="small muted">You said you didn't know</p>`}
           <p class="small" style="color:var(--good)">✓ ${esc(g.q.ans)}</p>
           ${g.q.why || g.q.k ? `<p class="small muted">${esc(g.q.why || (g.q.k.term + ": " + g.q.k.simple))}</p>` : ""}</div>`).join("")}` : ""}
         <div class="row"><button class="btn grow" id="r-again">Retake</button><a class="btn grow" href="#/c/${id}">Done</a></div>
@@ -1194,7 +1224,7 @@ route(/^\/settings$/, async () => {
       ${GUEST ? "" : `<div class="setrow"><span>Username</span><div style="max-width:60%;text-align:right"><input id="s-user" value="${esc(u.username || "")}" autocapitalize="none" spellcheck="false" maxlength="20"><span class="small" id="s-user-msg" style="display:block;color:var(--muted)"></span></div></div>`}
       <div class="setrow"><span>Name</span><input id="s-name" value="${esc(u.name || "")}" style="max-width:55%"></div>
       <div class="setrow"><span>Look</span><div class="seg" role="group" aria-label="Light or dark">${[["light", "Light"], ["dark", "Dark"]].map(([v, l]) => `<button data-th="${v}" aria-pressed="${themeNow() === v}">${l}</button>`).join("")}</div></div>
-      <div class="setrow"><span>Daily goal<br><span class="muted small">rounds a day for the ring</span></span><div class="seg" role="group" aria-label="Rounds per day">${[1, 2, 3, 5].map((n) => `<button data-g="${n}" aria-pressed="${u.daily_goal === n}">${n}</button>`).join("")}</div></div>
+      <div class="setrow"><span>Daily goal<br><span class="muted small">lessons a day</span></span><div class="seg" role="group" aria-label="Lessons per day">${[1, 2, 3, 5].map((n) => `<button data-g="${n}" aria-pressed="${u.daily_goal === n}">${n}</button>`).join("")}</div></div>
       ${GUEST ? "" : `<div class="setrow"><span>Reminder time</span><select id="s-hour" aria-label="Reminder time">${hours}</select></div>`}
       ${GUEST ? "" : `<div class="setrow"><span>Show me on the leaderboard</span><div class="seg"><button id="s-lb" aria-pressed="${!u.lb_hidden}">${u.lb_hidden ? "Hidden" : "Shown"}</button></div></div>`}
       <div class="setrow"><span>Sounds</span><div class="seg"><button id="s-snd" aria-pressed="${store.get("sm-sound", true)}">${store.get("sm-sound", true) ? "On" : "Off"}</button></div></div>
