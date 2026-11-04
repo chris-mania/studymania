@@ -300,3 +300,5 @@ details summary{list-style:revert}
 .morecard.due .kicker{color:var(--flame)}
 .sheet .tabs{flex:none}
 .sheet .tabs button{padding:9px 6px;font-size:14px}
+.copyline{display:flex;align-items:center;gap:8px;margin:8px 0;background:var(--surface);border-radius:10px;padding:8px 10px;font-weight:700;color:var(--fg)}
+.copyline span{flex:1;min-width:0}

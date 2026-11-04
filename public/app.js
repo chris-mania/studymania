@@ -699,33 +699,53 @@ function wirePlanForm(root, s, redraw) {
 }
 
 // ---------- add a subject ----------
+// Reads what the AI sent back. Handles several blocks pasted together (after NEXT),
+// and a reply that got cut off mid-card: every complete card is kept.
 function parseReply(text) {
   let t = String(text || "").trim();
   if (!t) throw new Error("Paste the AI's reply first.");
-  t = t.replace(/```(?:json)?/gi, "").replace(/[“”]/g, '"');
-  const blocks = [];
-  let depth = 0, start = -1, inStr = false, escp = false;
-  for (let i = 0; i < t.length; i++) {
-    const ch = t[i];
-    if (inStr) { if (escp) escp = false; else if (ch === "\\") escp = true; else if (ch === '"') inStr = false; continue; }
-    if (ch === '"') inStr = true;
-    else if (ch === "{") { if (depth === 0) start = i; depth++; }
-    else if (ch === "}") { depth--; if (depth === 0 && start >= 0) { blocks.push(t.slice(start, i + 1)); start = -1; } }
-  }
-  if (!blocks.length) throw new Error("That doesn't look like the AI's card list. Copy its whole reply, including the { } brackets.");
-  let subject = "", cards = [], questions = [];
-  for (const b of blocks) {
-    let o;
-    try { o = JSON.parse(b.replace(/,\s*([}\]])/g, "$1")); }
-    catch { throw new Error('The reply got cut off or has a typo. Ask the AI: "Send that JSON again, complete." Then paste it.'); }
-    if (Array.isArray(o.cards)) cards = cards.concat(o.cards);
-    if (Array.isArray(o.questions)) questions = questions.concat(o.questions);
-    if (!o.cards && o.term) cards.push(o);
-    subject = subject || o.subject || "";
+  t = t.replace(/[“”]/g, '"').replace(/[‘’]/g, "'");
+  // Each block starts with {"subject": ... or a ``` fence. Read each one on its own.
+  const cuts = [0];
+  for (const m of t.matchAll(/```|\{\s*"subject"\s*:/g)) if (m.index > 0) cuts.push(m.index);
+  cuts.push(t.length);
+  const segs = [];
+  for (let i = 0; i < cuts.length - 1; i++) segs.push(t.slice(cuts[i], cuts[i + 1]).replace(/```(?:json)?/gi, ""));
+
+  // Walk the items of a JSON array by hand, starting right after "[". Stops cleanly at a cut-off item.
+  const readArray = (seg, from) => {
+    const items = []; let i = from, cut = false;
+    while (i < seg.length) {
+      const ch = seg[i];
+      if (ch === "]") return { items, cut };
+      if (ch !== "{") { i++; continue; }
+      let depth = 0, inStr = false, esc = false, j = i;
+      for (; j < seg.length; j++) {
+        const c = seg[j];
+        if (inStr) { if (esc) esc = false; else if (c === "\\") esc = true; else if (c === '"') inStr = false; continue; }
+        if (c === '"') inStr = true; else if (c === "{") depth++; else if (c === "}" && --depth === 0) break;
+      }
+      if (j >= seg.length) { cut = true; break; }
+      items.push(seg.slice(i, j + 1)); i = j + 1;
+    }
+    return { items, cut: true };
+  };
+  const parse = (str) => { try { return JSON.parse(str.replace(/,\s*([}\]])/g, "$1")); } catch { return null; } };
+
+  let subject = "", cards = [], questions = [], cut = false, broken = 0;
+  for (const seg of segs) {
+    subject ||= (seg.match(/"subject"\s*:\s*"([^"]*)"/) || [])[1] || "";
+    for (const [key, list] of [["cards", cards], ["questions", questions]]) {
+      const m = seg.match(new RegExp(`"${key}"\\s*:\\s*\\[`));
+      if (!m) continue;
+      const r = readArray(seg, m.index + m[0].length);
+      if (r.cut) cut = true;
+      for (const item of r.items) { const o = parse(item); if (o) list.push(o); else broken++; }
+    }
   }
   cards = cards.filter((c) => c && c.term && (c.simple || c.answer || c.definition));
-  if (!cards.length) throw new Error("No cards found in that reply. Copy the whole code block the AI made.");
-  return { subject, cards, questions };
+  if (!cards.length) throw new Error(cut ? 'The reply got cut off before the first card finished. Ask the AI: "Send that again, complete." Then paste it.' : "No cards found in that reply. Copy the whole code block the AI made, including the { } brackets.");
+  return { subject, cards, questions, cut, broken, lastTerm: cards[cards.length - 1].term };
 }
 
 route(/^\/add(?:\/([\w-]+))?$/, (addTo) => {
@@ -763,6 +783,9 @@ route(/^\/add(?:\/([\w-]+))?$/, (addTo) => {
       <p class="err" id="a-err" hidden></p>
       ${S.parsed ? `<div class="card stack"><div class="spread"><h3>${plural(S.parsed.cards.length, "card")} · ${plural(S.parsed.questions.length, "exam question")}</h3><span class="pill ok">Looks good</span></div>
         <p class="muted small">${[...new Set(S.parsed.cards.map((c) => c.topic || "General"))].map(esc).join(" · ")}</p>
+        ${S.parsed.cut ? `<div class="notice warn small"><b>The reply got cut off</b>, but all ${S.parsed.cards.length} complete cards are saved. To get the rest, tell the AI:
+          <div class="copyline"><span id="a-cont">Continue right after "${esc(S.parsed.lastTerm)}" in the same JSON format.</span><button type="button" class="btn sm" id="a-contcopy">Copy</button></div>
+          Then paste its reply at the end of the box above and tap Check reply again. Or just save these now and add the rest later.</div>` : ""}
         <div class="preview">${S.parsed.cards.slice(0, 40).map((c) => `<div><b>${esc(c.term)}</b>: ${esc(c.simple || c.answer)}</div>`).join("")}</div></div>
         ${existing && existing.as_you_go && !existing.notes_done ? `<div class="card stack">
           ${existing.more_total ? `<div class="field"><span style="font-weight:700;font-size:15px">How many lectures or chapters is this?</span>
@@ -801,7 +824,8 @@ route(/^\/add(?:\/([\w-]+))?$/, (addTo) => {
         try { S.raw = ta.value; S.parsed = parseReply(ta.value); draw(); }
         catch (e) { $("a-err").textContent = e.message; $("a-err").hidden = false; }
       };
-      app.querySelectorAll("[data-addn]").forEach((b) => (b.onclick = () => { S.addN = +b.dataset.addn; const raw = $("a-paste").value; draw(); $("a-paste").value = raw; }));
+      if ($("a-contcopy")) $("a-contcopy").onclick = async (e) => { try { await navigator.clipboard.writeText($("a-cont").textContent); e.target.textContent = "Copied ✓"; } catch { e.target.textContent = "Select it"; } };
+            app.querySelectorAll("[data-addn]").forEach((b) => (b.onclick = () => { S.addN = +b.dataset.addn; const raw = $("a-paste").value; draw(); $("a-paste").value = raw; }));
       if ($("a-last")) $("a-last").onchange = (e) => (S.last = e.target.checked);
       if ($("a-save")) $("a-save").onclick = async () => {
         $("a-save").disabled = true;

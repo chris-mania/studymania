@@ -46,7 +46,7 @@ Reply with ONLY one JSON code block in exactly this shape, with no other text be
   ]
 }
 
-If there are more than 30 cards, send the first 30 cards (and the exam questions for those topics) in that block, then stop and write only "Say NEXT for more." When I say NEXT, send the next block in the same shape. Keep going until everything is covered.
+Send EVERYTHING in that one block if it fits in your reply. Only if it's too long for one reply: send as many complete cards as fit (with the exam questions for those topics), close the JSON properly, never stop in the middle of a card, then write only "Say NEXT for more." When I say NEXT, send the rest in the same shape, starting right after the last card you sent.
 
 MY NOTES:
 `;
