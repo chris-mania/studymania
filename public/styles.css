@@ -340,3 +340,7 @@ details summary{list-style:revert}
 .sess.is-review .kicker{color:var(--rev)}
 .revbadge{display:inline-block;background:var(--rev-soft);color:var(--rev);font:700 13px/1 var(--body);letter-spacing:.06em;text-transform:uppercase;padding:6px 10px;border-radius:999px;margin-bottom:6px}
 .revask .btn{margin-top:10px}
+/* class name at the top of a lesson/review/cram/exam */
+.classtag{display:inline-flex;align-items:center;gap:8px;align-self:flex-start;max-width:100%;margin:-4px 0 8px;padding:5px 12px 5px 10px;border-radius:999px;
+  background:color-mix(in srgb,var(--sc) 16%,var(--surface));border:1.5px solid color-mix(in srgb,var(--sc) 45%,transparent);font:700 14px/1.2 var(--body);color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.classtag .dot{width:9px;height:9px;border-radius:50%;background:var(--sc);flex:none}

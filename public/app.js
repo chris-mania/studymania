@@ -18,6 +18,8 @@ const store = {
 };
 const COLORS = 8;
 const colorVar = (i) => `var(--c${(i || 0) % COLORS})`;
+// Which class you're studying, shown at the top of every lesson, review, cram round and exam.
+const classTag = (c) => `<div class="classtag" style="--sc:${colorVar(c.color)}"><span class="dot"></span>${esc(c.name)}</div>`;
 const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
 
@@ -1247,7 +1249,7 @@ route(/^\/s\/([\w-]+)\/(next|review|quiz|lesson|misses)(?:\/(\d+))?$/, async (id
       <div class="sesstop"><button class="iconbtn" id="x" aria-label="Save and quit">✕</button>
         <div class="bar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><i style="width:${pct}%"></i></div>
         <span class="combo">${S.combo >= 3 ? `🔥${S.combo}` : ""}</span></div>
-      ${label ? `<div class="kicker">${label}</div>` : ""}${inner}</div>`;
+      ${classTag(d.course)}${label ? `<div class="kicker">${label}</div>` : ""}${inner}</div>`;
     window.scrollTo(0, 0); // every new question starts at the top, progress bar in view
     $("x").onclick = quit;
   }
@@ -1458,7 +1460,7 @@ route(/^\/cram\/([\w-]+)\/(rapid|speed|missed)$/, async (id, mode) => {
     app.innerHTML = `<div class="sess"><div class="sesstop"><button class="iconbtn" id="x" aria-label="Stop">✕</button>
       <div class="bar ${mode === "speed" ? "timebar" : ""}"><i id="cbar" style="width:${pct}%"></i></div>
       <span class="combo" id="cnum">${mode === "speed" ? `${left}s` : `${S.i + 1}/${queue.length}`}</span></div>
-      <div class="kicker">${title}${mode === "speed" ? ` · ${S.right} right` : S.combo >= 3 ? ` · 🔥${S.combo}` : ""}</div>
+      ${classTag(d.course)}<div class="kicker">${title}${mode === "speed" ? ` · ${S.right} right` : S.combo >= 3 ? ` · 🔥${S.combo}` : ""}</div>
       <div class="qbody"><p class="prompt">${q.html}</p>
       <div class="opts">${q.opts.map((o, j) => `<button class="opt" data-j="${j}"><span class="k">${"ABCD"[j]}</span><span>${esc(o)}</span></button>`).join("")}</div>
       <button class="btn ghost idk" id="idk">${mode === "speed" ? "Skip" : "I don't know"}</button></div><div id="fb"></div></div>`;
@@ -1578,7 +1580,7 @@ route(/^\/exam\/([\w-]+)$/, async (id) => {
       app.innerHTML = `<div class="sess">
         <div class="sesstop"><button class="iconbtn" id="x" aria-label="Quit">✕</button><div class="bar"><i style="width:${(i / qs.length) * 100}%"></i></div>
           <span class="combo" id="timer" style="color:var(--muted)">${endAt ? "" : `${i + 1}/${qs.length}`}</span></div>
-        <div class="kicker">Question ${i + 1} of ${qs.length} · ${esc(q.topic || "")}</div>
+        ${classTag(d.course)}<div class="kicker">Question ${i + 1} of ${qs.length} · ${esc(q.topic || "")}</div>
         <div class="qbody"><p class="prompt">${q.html}</p>
         <div class="opts">${q.opts.map((o, j) => `<button class="opt ${answers[i] === j ? "sel" : ""}" data-j="${j}"><span class="k">${"ABCDE"[j]}</span><span>${esc(o)}</span></button>`).join("")}</div></div>
         <button class="btn ghost idk ${answers[i] === -1 ? "on" : ""}" id="e-idk">I don't know</button>
