@@ -560,28 +560,39 @@ async function nudgeFor(env, user, day) {
   return { title: pu.streak ? `🔥 Keep your ${pu.streak}-day streak going` : "📚 Time for today's study", body };
 }
 
-// Hourly: up to 2 nudges a day, only on days you haven't studied yet.
-// 1st at your chosen hour, 2nd ("are you sure?") 6 hours later (less if that would pass midnight).
+// Runs every ~15 minutes: up to 2 reminders a day.
+// 1st at your chosen time, 2nd ("are you sure?") 6 hours later (less if that would pass midnight).
+// If a check runs late (the timer skipped your hour), the reminder still goes out on the next check.
+// Studied already? Only remind if a subject still has lessons planned for today, and never say the streak is ending.
 export async function sendReminders(env) {
   const { results } = await env.DB.prepare(
     "SELECT DISTINCT u.id, u.tz, u.remind_hour, u.last_study_day, u.last_nudge_day, u.nudges_today FROM users u JOIN push_subs p ON p.user_id = u.id").all();
   for (const u of results) {
     const now = localNow(u.tz || "America/New_York");
-    if (u.last_study_day === now.day) continue;
     const sentToday = u.last_nudge_day === now.day ? u.nudges_today || 0 : 0;
     const second = secondReminderHour(u.remind_hour);
     let which = 0;
-    if (sentToday === 0 && now.hour === u.remind_hour) which = 1;
-    else if (sentToday === 1 && second !== null && now.hour === second) which = 2;
+    if (sentToday === 0 && now.hour >= u.remind_hour) which = second !== null && now.hour >= second ? 2 : 1;
+    else if (sentToday === 1 && second !== null && now.hour >= second) which = 2;
     if (!which) continue;
-    await env.DB.prepare("UPDATE users SET last_nudge_day = ?, nudges_today = ? WHERE id = ?").bind(now.day, which, u.id).run();
+    const studied = u.last_study_day === now.day;
     const full = await getUser(env, u.id);
-    const msg = await nudgeFor(env, full, now.day);
-    if (which === 2) {
-      const streak = publicUser(full, now.day).streak;
-      msg.title = streak ? `⏰ Your ${streak}-day streak ends at midnight` : "⏰ Still time to study today";
-      msg.body = "Are you sure you want to skip today? One lesson takes about 5 minutes. " + msg.body;
+    let msg;
+    if (studied) {
+      const left = (await courseSummaries(env, u.id, now.day)).filter((c) => c.plan.todayLeft > 0);
+      if (!left.length) continue; // everything planned for today is done
+      const n = left.reduce((a, c) => a + c.plan.todayLeft, 0);
+      msg = { title: `📚 ${n} more lesson${n > 1 ? "s" : ""} today`,
+        body: `${left.map((c) => c.name).join(" and ")} ${left.length > 1 ? "are" : "is"} still waiting. About ${n * 5} minutes and you're done for the day.` };
+    } else {
+      msg = await nudgeFor(env, full, now.day);
+      if (which === 2) {
+        const streak = publicUser(full, now.day).streak;
+        msg.title = streak ? `⏰ Your ${streak}-day streak ends at midnight` : "⏰ Still time to study today";
+        msg.body = "Are you sure you want to skip today? One lesson takes about 5 minutes. " + msg.body;
+      }
     }
+    await env.DB.prepare("UPDATE users SET last_nudge_day = ?, nudges_today = ? WHERE id = ?").bind(now.day, which, u.id).run();
     const subs = (await env.DB.prepare("SELECT endpoint, p256dh, auth FROM push_subs WHERE user_id = ?").bind(u.id).all()).results;
     for (const sub of subs) {
       const r = await sendPush(env, sub, msg);
