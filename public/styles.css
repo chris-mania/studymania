@@ -5,6 +5,7 @@
   --flame:#ff9f5a; --flame-soft:rgba(255,159,90,.14); --gold:#f2c94c; --gold-soft:rgba(242,201,76,.14);
   --good:#8bd795; --good-deep:#5aa765; --good-soft:rgba(139,215,149,.14);
   --bad:#f39a90; --bad-deep:#c96a60; --bad-soft:rgba(243,154,144,.13);
+  --rev:#b79cf7; --rev-deep:#8a6ad6; --rev-ink:#1f1140; --rev-soft:rgba(183,156,247,.15);
   --c0:#4b98f7; --c1:#7fd6bb; --c2:#f2c94c; --c3:#ff9f5a; --c4:#d59cf5; --c5:#f39a90; --c6:#7fd0e6; --c7:#b8d77f;
   --display:"Fredoka", ui-rounded, "SF Pro Rounded", system-ui, sans-serif;
   --body:"Atkinson Hyperlegible", ui-sans-serif, system-ui, -apple-system, sans-serif;
@@ -16,6 +17,7 @@
   --flame:#e2722b; --flame-soft:rgba(226,114,43,.12); --gold:#b8870f; --gold-soft:rgba(184,135,15,.12);
   --good:#2f8a40; --good-deep:#1f6b2e; --good-soft:rgba(47,138,64,.10);
   --bad:#c0473a; --bad-deep:#92302a; --bad-soft:rgba(192,71,58,.10);
+  --rev:#7a52d6; --rev-deep:#5a37ad; --rev-ink:#ffffff; --rev-soft:rgba(122,82,214,.10);
   --c0:#4b98f7; --c1:#2f9a7e; --c2:#b8870f; --c3:#e2722b; --c4:#9a52c2; --c5:#c0473a; --c6:#2d8ea6; --c7:#6d8f24;
   color-scheme:light;
 }}
@@ -25,6 +27,7 @@
   --flame:#e2722b; --flame-soft:rgba(226,114,43,.12); --gold:#b8870f; --gold-soft:rgba(184,135,15,.12);
   --good:#2f8a40; --good-deep:#1f6b2e; --good-soft:rgba(47,138,64,.10);
   --bad:#c0473a; --bad-deep:#92302a; --bad-soft:rgba(192,71,58,.10);
+  --rev:#7a52d6; --rev-deep:#5a37ad; --rev-ink:#ffffff; --rev-soft:rgba(122,82,214,.10);
   --c0:#4b98f7; --c1:#2f9a7e; --c2:#b8870f; --c3:#e2722b; --c4:#9a52c2; --c5:#c0473a; --c6:#2d8ea6; --c7:#6d8f24;
   color-scheme:light;
 }
@@ -326,3 +329,14 @@ details summary{list-style:revert}
 .hero{position:relative}
 .guest-top{align-self:flex-end;background:none;border:1.5px solid var(--line);color:var(--muted);border-radius:999px;padding:5px 12px;font:700 13px/1.2 var(--body);cursor:pointer;margin-bottom:-4px}
 .guest-top:hover{color:var(--fg);border-color:var(--muted)}
+
+/* Reviews look different from lessons: purple, with a 🔁 label */
+.btn.rev{background:var(--rev);color:var(--rev-ink);box-shadow:0 4px 0 var(--rev-deep)}
+.btn.rev:active{box-shadow:0 1px 0 var(--rev-deep)}
+.btn.rev.big{display:flex;flex-direction:column;align-items:center;gap:2px;padding-top:16px;padding-bottom:16px;font-size:19px}
+.btn.rev.big span{font:600 13px/1.2 var(--body);opacity:.8}
+.upnext.is-review .un-btn{background:var(--rev);color:var(--rev-ink);box-shadow:0 4px 0 var(--rev-deep)}
+.sess.is-review .bar i{background:var(--rev)}
+.sess.is-review .kicker{color:var(--rev)}
+.revbadge{display:inline-block;background:var(--rev-soft);color:var(--rev);font:700 13px/1 var(--body);letter-spacing:.06em;text-transform:uppercase;padding:6px 10px;border-radius:999px;margin-bottom:6px}
+.revask .btn{margin-top:10px}

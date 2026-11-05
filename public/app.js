@@ -519,18 +519,18 @@ function wireSetup() {
 }
 
 // ---------- home ----------
+const reviewMins = (due) => Math.max(2, Math.round(Math.min(12, due) * 0.3));
 function upNext() {
   const cs = ME.courses.filter((c) => c.total).sort((a, b) => (a.exam_date || a.finish_by || "9999").localeCompare(b.exam_date || b.finish_by || "9999"));
   const f = (fn) => cs.find(fn);
   let c;
-  if ((c = f((x) => x.due >= 3 && !reviewSkipped(x.id)))) return { c, k: "review", title: "Review", sub: `${Math.min(12, c.due)} words that are due · about ${Math.max(2, Math.round(Math.min(12, c.due) * 0.3))} min` };
   if ((c = f((x) => x.plan.todayLeft > 0 && x.next))) return { c, k: "next", title: `Lesson ${c.next.n} · ${c.next.topic}`, sub: `${plural(c.next.words, "new word")}${c.learned ? " + 3 throwbacks" : ""} · about ${c.next.words + 1} min` };
   // Exam today or tomorrow and today's lessons are done: cram.
   if ((c = f((x) => x.exam_date && daysUntil(x.exam_date) >= 0 && daysUntil(x.exam_date) <= 1)))
     return { c, k: "cram", title: daysUntil(c.exam_date) ? "Exam tomorrow: cram time" : "Exam today: last cram", sub: `Rapid fire through every word, weakest first${c.missed ? ` · ${c.missed} missed words saved` : ""}` };
   if ((c = f((x) => x.due > 0 && !reviewSkipped(x.id))) || (c = f((x) => x.next))) {
     if (c.next && (c.plan.todayLeft > 0 || !c.due || reviewSkipped(c.id))) return { c, k: "next", title: `Lesson ${c.next.n} · ${c.next.topic}`, sub: `${plural(c.next.words, "new word")}${c.learned ? " + 3 throwbacks" : ""} · about ${c.next.words + 1} min` };
-    return { c, k: "review", title: "Review", sub: `${plural(Math.min(12, c.due), "word")} due` };
+    return { c, k: "review", title: "Review", sub: `${plural(Math.min(12, c.due), "word")} from earlier lessons · about ${reviewMins(c.due)} min` };
   }
   if ((c = cs[0])) return c.plan.phase === "review" ? { c, k: "exam", title: "Practice exam", sub: "Final sweep: see what still needs work" } : { c, k: "quiz", title: "Practice quiz", sub: "10 quick questions on what you've learned" };
   return null;
@@ -572,15 +572,15 @@ route(/^\/$/, () => {
     ${courses.filter((c) => c.plan.more?.overdue).map((c) => `<div class="notice">📥 <b style="display:inline">New notes or slides for ${esc(c.name)} yet?</b> Add them so your plan stays right. <a href="#/add/${c.id}" style="font-weight:700">Add them</a> · <a href="#/c/${c.id}">That's everything</a></div>`).join("")}
     ${courses.reduce((a, c) => a + (c.plan.todayLeft || 0), 0) > 6 ? `<div class="notice warn"><b>Heads up: your subjects add up to ${courses.reduce((a, c) => a + (c.plan.todayLeft || 0), 0)} lessons today.</b> Exams close together? Start one earlier or add review days in its plan.</div>` : ""}
     ${setupCard()}
-    ${nx ? `<a class="upnext" href="#${nextHref(nx)}" style="--sc:${colorVar(nx.c.color)}">
-        <span class="kicker">Up next · ${esc(nx.c.name)}</span>
+    ${nx ? `<a class="upnext ${nx.k === "review" ? "is-review" : ""}" href="#${nextHref(nx)}" style="--sc:${nx.k === "review" ? "var(--rev)" : colorVar(nx.c.color)}">
+        <span class="kicker">${nx.k === "review" ? "🔁 Review" : "Up next"} · ${esc(nx.c.name)}</span>
         <span class="un-title">${esc(nx.title)}</span>
         <span class="un-sub">${esc(nx.sub)}</span>
-        <span class="btn primary block un-btn">${G.done ? "Bonus round" : did ? "Keep going" : "Start"}</span>
+        <span class="btn primary block un-btn">${nx.k === "review" ? "Start review" : G.done ? "Bonus round" : did ? "Keep going" : "Start"}</span>
       </a>${nx.k === "review" ? `<button class="btn ghost small" id="skip-rev" style="margin-top:-6px">Skip review for today. Go to a lesson instead</button>` : ""}` : !courses.length ? `<a class="upnext" href="#/add"><span class="kicker">Get started</span><span class="un-title">Add your first subject</span><span class="un-sub">Give your notes or slides to any AI with our prompt. Takes about 2 minutes.</span><span class="btn primary block un-btn">Add a subject</span></a>` : ""}
     ${items.length ? `<section class="stack" style="gap:8px"><h3>${G.done ? "Or get ahead in" : "Also today"}</h3>
       ${items.map((x) => `<a class="todo" href="#${x.lessons ? `/s/${x.c.id}/next` : x.due ? `/s/${x.c.id}/review` : `/exam/${x.c.id}`}" style="--sc:${colorVar(x.c.color)}">
-        <span class="dot"></span><div class="grow"><b>${esc(x.c.name)}</b><span class="muted small">${[x.lessons ? plural(x.lessons, "lesson") : "", x.due ? `${x.due} to review` : "", x.review && !x.lessons && !x.due ? "Practice exam" : "", !x.lessons && !x.due && !x.review && x.c.next ? "Bonus: get ahead with the next lesson" : ""].filter(Boolean).join(" · ")}</span></div><span class="go-arrow">›</span></a>`).join("")}
+        <span class="dot"></span><div class="grow"><b>${esc(x.c.name)}</b><span class="muted small">${[x.lessons ? plural(x.lessons, "lesson") : "", x.due ? `🔁 ${x.due} to review` : "", x.review && !x.lessons && !x.due ? "Practice exam" : "", !x.lessons && !x.due && !x.review && x.c.next ? "Bonus: get ahead with the next lesson" : ""].filter(Boolean).join(" · ")}</span></div><span class="go-arrow">›</span></a>`).join("")}
     </section>` : ""}
     <section class="card stack lbprev" id="lbprev"><div class="spread"><h3>🏆 This week</h3><a class="small" href="#/leaderboard" style="font-weight:700">See all</a></div><p class="muted small">Loading…</p></section>
     ${courses.length ? `<h3 style="margin-top:4px">Your subjects</h3>` : ""}
@@ -1243,7 +1243,7 @@ route(/^\/s\/([\w-]+)\/(next|review|quiz|lesson|misses)(?:\/(\d+))?$/, async (id
 
   function frame(inner, label) {
     const pct = Math.round((S.i / steps.length) * 100);
-    app.innerHTML = `<div class="sess">
+    app.innerHTML = `<div class="sess ${mode === "review" && kind === "review" ? "is-review" : ""}">
       <div class="sesstop"><button class="iconbtn" id="x" aria-label="Save and quit">✕</button>
         <div class="bar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><i style="width:${pct}%"></i></div>
         <span class="combo">${S.combo >= 3 ? `🔥${S.combo}` : ""}</span></div>
@@ -1279,7 +1279,7 @@ route(/^\/s\/([\w-]+)\/(next|review|quiz|lesson|misses)(?:\/(\d+))?$/, async (id
       ? (st.t === "check" && !st.retry ? matchQ(d, st.k) : pairQ(d, st.k, st.def ? "meaning" : undefined))
       : st.def ? (st.t === "check" ? termQ(d, st.k) : meaningQ(d, st.k))
       : st.t === "check" ? meaningQ(d, st.k) : termQ(d, st.k);
-    const label = st.tb ? `Throwback · from Lesson ${lessonOf[st.k.id]}` : mode === "learn" ? (st.t === "check" ? "Quick check" : "Recap") : kind === "review" ? "Review" : kind === "misses" ? "Fix your misses" : "Practice";
+    const label = st.tb ? `Throwback · from Lesson ${lessonOf[st.k.id]}` : mode === "learn" ? (st.t === "check" ? "Quick check" : "Recap") : kind === "review" ? `🔁 Review · from Lesson ${lessonOf[st.k.id]}` : kind === "misses" ? "Fix your misses" : "Practice";
     if (q.match) return showMatch(q, st, label);
     frame(`<div class="qbody"><p class="prompt">${q.html}</p>
       <div class="opts">${q.opts.map((o, j) => `<button class="opt" data-j="${j}"><span class="k">${"ABCD"[j]}</span><span>${esc(o)}</span></button>`).join("")}</div>
@@ -1359,12 +1359,25 @@ route(/^\/s\/([\w-]+)\/(next|review|quiz|lesson|misses)(?:\/(\d+))?$/, async (id
     const r = await saveRound({ course_id: id, kind: mode === "learn" ? "lesson" : "review", results: list.map(({ tb, ...x }) => x), xp: S.xp - S.xpSent, counts: !S.counted });
     saveMissed(d, S.missed, []);
     celebrate(r, {
-      xp: S.xp, accuracy, best: S.best,
+      xp: S.xp, accuracy, best: S.best, after: mode,
       text: mode === "learn" ? `You learned ${plural(lesson.cards.length, "new word")} in ${esc(lesson.topic)}${tbCount ? ` and refreshed ${plural(tbCount, "older one")}` : ""}.` : `${S.right} of ${S.asked} right.`,
       title: mode === "learn" ? "Lesson complete!" : "Round complete!",
     });
   }
 
+  // Words due for review? Offer a quick review before the new lesson (once a day per subject if you say no).
+  const dueNow = d.cards.filter((k) => isLearned(d, k) && d.progress[k.id].due <= T).length;
+  const straightKey = `sm-straight-${id}-${T}`;
+  if (!usable && mode === "learn" && dueNow >= 3 && !store.get(straightKey, false) && !reviewSkipped(id)) {
+    const el = sheet(`<div class="revask"><span class="revbadge">🔁 Review</span>
+      <h2>Review first?</h2>
+      <p class="muted">${plural(dueNow, "word")} from earlier lessons ${dueNow > 1 ? "are" : "is"} due. A quick review (about ${reviewMins(dueNow)} min) locks them in before you add new ones.</p>
+      <button class="btn rev block" id="ra-rev">🔁 Review ${plural(Math.min(12, dueNow), "word")} first</button>
+      <button class="btn block" id="ra-go">Go straight to Lesson ${lesson.n}</button></div>`);
+    el.querySelector("#ra-rev").onclick = () => { el.remove(); go(`/s/${id}/review`); };
+    el.querySelector("#ra-go").onclick = () => { el.remove(); store.set(straightKey, true); next(); };
+    return;
+  }
   if (usable) {
     const el = sheet(`<h2>Pick up where you left off?</h2><p class="muted">You got ${Math.round((saved.i / saved.steps.length) * 100)}% through Lesson ${lesson.n}: ${esc(lesson.topic)}.</p>
       <button class="btn primary block" id="rs-go">Continue</button><button class="btn block" id="rs-new">Start over</button>`);
@@ -1395,12 +1408,14 @@ async function saveRound(body) {
   try { await loadMe(); } catch {}
   return { ...before, used_freeze: saved?.used_freeze || 0, earned_freeze: !!saved?.earned_freeze };
 }
-function celebrate(before, { xp, accuracy, best, text, title }) {
+function celebrate(before, { xp, accuracy, best, text, title, after }) {
   const G = goalInfo(), goalHit = !before.goalDone && G.done, streakUp = !before.lit && ME.user.last_study_day === todayStr();
   const emoji = goalHit ? "🏆" : streakUp ? "🔥" : accuracy === 100 ? "🎯" : "⭐";
   const head = goalHit ? "Daily goal complete!" : streakUp ? `${ME.user.streak}-day streak!` : title;
   const extra = before.used_freeze ? `<div class="notice">❄️ A streak freeze covered the day you missed. Your streak is safe.</div>` : before.earned_freeze ? `<div class="notice ok">❄️ <b style="display:inline">You earned a streak freeze!</b> It'll save your streak if you ever miss a day.</div>` : "";
   const due = ME.courses.reduce((a, c) => a + (reviewSkipped(c.id) ? 0 : c.due), 0), reviewed = (ME.today.reviews || 0) > 0;
+  // After a lesson, if words are due, reviewing is the big next step.
+  const revC = after === "learn" ? ME.courses.filter((c) => c.due > 0 && !reviewSkipped(c.id)).sort((a, b) => b.due - a.due)[0] : null;
   app.innerHTML = `<div class="sess"><div class="cele">
     <div class="big-emoji">${emoji}</div><h1>${head}</h1>
     <p class="muted">${text} ${best >= 3 ? `Best run: ${best} in a row.` : ""}</p>
@@ -1411,9 +1426,12 @@ function celebrate(before, { xp, accuracy, best, text, title }) {
       <div class="${reviewed || !due ? "ok" : ""}"><span>${reviewed ? "✅" : due ? "⬜" : "✅"}</span><b>Reviews</b><span class="grow"></span>${reviewed ? "Done today" : due ? `${due} words waiting` : "Nothing due"}</div>
     </div>
     <p class="muted small">${G.done ? "Today's goal is done. Anything more is a bonus that puts you ahead." : `${plural(G.goal - G.did, "more " + G.unit)} to hit today's goal.`}</p>
-  </div><div class="footbtn stack"><button class="btn primary block" id="more">${G.done ? "Do a bonus round" : `Next ${G.unit} (${G.goal - G.did} to go)`}</button><a class="btn block" href="#/">Done for now</a></div></div>`;
+  </div><div class="footbtn stack">
+    ${revC ? `<button class="btn rev block big" id="go-rev">🔁 Review ${plural(Math.min(12, revC.due), "word")} now<span>${esc(revC.name)} · about ${reviewMins(revC.due)} min</span></button>` : ""}
+    <button class="btn ${revC ? "" : "primary"} block" id="more">${G.done ? "Do a bonus round" : `Next ${G.unit} (${G.goal - G.did} to go)`}</button><a class="btn ghost block" href="#/">Done for now</a></div></div>`;
   countUp($("xpn"), xp); chime("win"); buzz([20, 60, 20, 60, 40]); confetti(goalHit || streakUp ? 1.6 : 0.8);
   $("more").onclick = () => startBest();
+  if (revC) $("go-rev").onclick = () => go(`/s/${revC.id}/review`);
 }
 
 // ---------- cram: rapid fire, speed round, missed words (one subject at a time) ----------
