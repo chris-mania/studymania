@@ -1730,8 +1730,10 @@ async function enablePush() {
 
 // ---------- boot ----------
 // Study Mania lives at studymania.app now. The old address forwards there,
-// except for no-account users, whose progress is stored on the old address.
-if (location.hostname === "studymania.pages.dev") {
+// except for no-account users, whose progress is stored on the old address,
+// and home-screen apps, which keep running from where they were installed.
+const OLD_HOME_SCREEN_APP = navigator.standalone === true || !!window.matchMedia?.("(display-mode: standalone)").matches;
+if (location.hostname === "studymania.pages.dev" && !OLD_HOME_SCREEN_APP) {
   if (!hasGuestData()) { location.replace("https://studymania.app/" + location.hash); }
   else setTimeout(() => toast("Study Mania moved to studymania.app. Make an account in Settings to take your progress with you.", 8000), 1500);
 }
