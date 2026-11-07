@@ -554,19 +554,27 @@ route(/^\/$/, () => {
   const back = user.freeze_needed ? `<div class="notice">❄️ <b style="display:inline">You missed ${plural(user.freeze_needed, "day")}.</b> A streak freeze will save your ${user.streak}-day streak as soon as you finish a lesson today.</div>`
     : !user.streak && gap >= 2 && user.best_streak ? `<div class="notice">👋 <b style="display:inline">Welcome back.</b> Your streak reset, but your progress didn't. One lesson today gets you rolling again.</div>` : "";
 
+  const dueAll = courses.reduce((a, c) => a + (c.due || 0), 0), missedAll = courses.reduce((a, c) => a + (c.missed || 0), 0);
+  const soon = courses.filter((c) => c.exam_date && daysUntil(c.exam_date) >= 0).sort((a, b) => a.exam_date.localeCompare(b.exam_date))[0];
   app.innerHTML = `${topbar(null, { stats: false })}${guestBanner()}
   <div class="stack">
-    <section class="card hero-card">
-      <div class="streak-ring ${frac >= 1 ? "done" : ""}" role="img" aria-label="${user.streak}-day streak. ${did} of ${goal} ${G.unit}s today.">
-        <svg viewBox="0 0 104 104"><circle class="track" cx="52" cy="52" r="46" fill="none" stroke-width="8"/>
-          <circle class="fill" cx="52" cy="52" r="46" fill="none" stroke-width="8" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C}"/></svg>
-        <div class="hflame ${lit ? "lit" : ""}">🔥</div>
-      </div>
-      <div class="hero-text">
-        <div class="streak-num">${user.streak}<span> day streak</span></div>
-        <p class="${G.done ? "" : "muted"}" style="${G.done ? "color:var(--good);font-weight:700" : ""}">${G.done ? `✓ Daily goal done: ${did} of ${plural(goal, G.unit)}` : `Daily goal: ${did} of ${plural(goal, G.unit)}`}${G.bonus ? ` <span class="pill acc">+${G.bonus} bonus</span>` : ""}</p>
-        <p class="muted small" style="margin-top:-4px">${G.done ? "Anything more today is a bonus." : lit ? `${plural(goal - did, G.unit)} to go. Your streak is safe for today.` : user.streak ? "Finish a lesson today to keep your streak." : "Finish a lesson to start a streak."}</p>
-        <div class="row" style="gap:6px;flex-wrap:wrap"><span class="pill xp-pill">⚡ ${user.xp} XP</span>${user.freezes ? `<span class="pill" title="Streak freezes: each one covers a missed day">❄️ ${user.freezes}</span>` : ""}</div>
+    <a class="lbtop" id="lbprev" href="#/leaderboard" aria-label="This week's leaderboard">
+      <div class="lb-rank"><span class="lb-trophy">🏆</span><div><b id="lb-me" class="small">This week</b><span>loading…</span></div></div>
+      <div class="lb-faces" id="lb-faces"></div>
+      <div class="lb-side"><b id="lb-xp"></b><span id="lb-reset">${(() => { const n = (8 - new Date(todayStr() + "T12:00").getDay()) % 7 || 7; return `resets in ${plural(n, "day")}`; })()}</span></div>
+    </a>
+    <section class="card hero2">
+      <div class="h2-top">
+        <div class="streak-ring mini ${frac >= 1 ? "done" : ""}" role="img" aria-label="${user.streak}-day streak. ${did} of ${goal} ${G.unit}s today.">
+          <svg viewBox="0 0 104 104"><circle class="track" cx="52" cy="52" r="46" fill="none" stroke-width="10"/>
+            <circle class="fill" cx="52" cy="52" r="46" fill="none" stroke-width="10" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C}"/></svg>
+          <div class="hflame ${lit ? "lit" : ""}">🔥</div>
+        </div>
+        <div class="grow hero-text">
+          <div class="h2-streak">${user.streak}-day streak</div>
+          <p class="h2-goal ${G.done ? "done" : ""}">${G.done ? `✓ Done for today · ${did} of ${plural(goal, G.unit)}` : `${did} of ${plural(goal, G.unit)} today`}${G.bonus ? ` <span class="pill acc">+${G.bonus} bonus</span>` : ""}</p>
+        </div>
+        <div class="h2-pills"><span class="pill xp-pill">⚡ ${user.xp}</span>${user.freezes ? `<span class="pill" title="Streak freezes: each one covers a missed day">❄️ ${user.freezes}</span>` : ""}</div>
       </div>
       <div class="week">${days.map((d) => `<div class="dayc ${hit.has(d) ? "hit" : ""} ${d === todayStr() ? "now" : ""}"><i>${hit.has(d) ? "🔥" : ""}</i>${"SMTWTFS"[new Date(d + "T12:00").getDay()]}</div>`).join("")}</div>
     </section>
@@ -574,28 +582,38 @@ route(/^\/$/, () => {
     ${courses.filter((c) => c.plan.more?.overdue).map((c) => `<div class="notice">📥 <b style="display:inline">New notes or slides for ${esc(c.name)} yet?</b> Add them so your plan stays right. <a href="#/add/${c.id}" style="font-weight:700">Add them</a> · <a href="#/c/${c.id}">That's everything</a></div>`).join("")}
     ${courses.reduce((a, c) => a + (c.plan.todayLeft || 0), 0) > 6 ? `<div class="notice warn"><b>Heads up: your subjects add up to ${courses.reduce((a, c) => a + (c.plan.todayLeft || 0), 0)} lessons today.</b> Exams close together? Start one earlier or add review days in its plan.</div>` : ""}
     ${setupCard()}
-    ${nx ? `<a class="upnext ${nx.k === "review" ? "is-review" : ""}" href="#${nextHref(nx)}" style="--sc:${nx.k === "review" ? "var(--rev)" : colorVar(nx.c.color)}">
+    ${G.done && nx && courses.length ? `<section class="card donecard">
+        <h3>You're done for today</h3>
+        <p class="muted">${courses.length > 1 ? "Every class is covered." : "Today's lessons are covered."} ${nx.k === "next" ? `Next up: ${esc(nx.c.name)}, Lesson ${nx.c.next?.n ?? ""}.` : ""}</p>
+        <a class="btn small" href="#${nextHref(nx)}">${nx.k === "review" ? "Review" : nx.k === "cram" ? "Cram" : "Bonus lesson"} · ${esc(nx.c.name)}</a>
+      </section>`
+      : nx ? `<a class="upnext ${nx.k === "review" ? "is-review" : ""}" href="#${nextHref(nx)}" style="--sc:${nx.k === "review" ? "var(--rev)" : colorVar(nx.c.color)}">
         <span class="kicker">${nx.k === "review" ? "🔁 Review" : "Up next"} · ${esc(nx.c.name)}</span>
         <span class="un-title">${esc(nx.title)}</span>
         <span class="un-sub">${esc(nx.sub)}</span>
-        <span class="btn primary block un-btn">${nx.k === "review" ? "Start review" : G.done ? "Bonus round" : did ? "Keep going" : "Start"}</span>
+        <span class="btn primary block un-btn">${nx.k === "review" ? "Start review" : did ? "Keep going" : "Start"}</span>
       </a>${nx.k === "review" ? `<button class="btn ghost small" id="skip-rev" style="margin-top:-6px">Skip review for today. Go to a lesson instead</button>` : ""}` : !courses.length ? `<a class="upnext" href="#/add"><span class="kicker">Get started</span><span class="un-title">Add your first subject</span><span class="un-sub">Give your notes or slides to any AI with our prompt. Takes about 2 minutes.</span><span class="btn primary block un-btn">Add a subject</span></a>` : ""}
-    ${items.length ? `<section class="stack" style="gap:8px"><h3>${G.done ? "Or get ahead in" : "Also today"}</h3>
+    ${items.length && !G.done ? `<section class="stack" style="gap:8px"><h3>Also today</h3>
       ${items.map((x) => `<a class="todo" href="#${x.lessons ? `/s/${x.c.id}/next` : x.due ? `/s/${x.c.id}/review` : `/exam/${x.c.id}`}" style="--sc:${colorVar(x.c.color)}">
-        <span class="dot"></span><div class="grow"><b>${esc(x.c.name)}</b><span class="muted small">${[x.lessons ? plural(x.lessons, "lesson") : "", x.due ? `🔁 ${x.due} to review` : "", x.review && !x.lessons && !x.due ? "Practice exam" : "", !x.lessons && !x.due && !x.review && x.c.next ? "Bonus: get ahead with the next lesson" : ""].filter(Boolean).join(" · ")}</span></div><span class="go-arrow">›</span></a>`).join("")}
+        <span class="dot"></span><div class="grow"><b>${esc(x.c.name)}</b><span class="muted small">${[x.lessons ? plural(x.lessons, "lesson") : "", x.due ? `🔁 ${x.due} to review` : "", x.review && !x.lessons && !x.due ? "Practice exam" : ""].filter(Boolean).join(" · ")}</span></div><span class="go-arrow">›</span></a>`).join("")}
     </section>` : ""}
-    <section class="card stack lbprev" id="lbprev"><div class="spread"><h3>🏆 This week</h3><a class="small" href="#/leaderboard" style="font-weight:700">See all</a></div><p class="muted small">Loading…</p></section>
-    ${courses.length ? `<h3 style="margin-top:4px">Your subjects</h3>` : ""}
+    ${courses.some((c) => c.total) ? `<a class="cramcard" href="#/study">
+      <span class="cc-icon" aria-hidden="true">⚡</span>
+      <div class="grow"><b>Study &amp; Cram</b><span>${[dueAll ? `${dueAll} due` : "", missedAll ? `${missedAll} missed` : "", soon ? `${esc(soon.name)} exam ${daysUntil(soon.exam_date) ? `in ${plural(daysUntil(soon.exam_date), "day")}` : "today"}` : ""].filter(Boolean).join(" · ") || "Review, cram or take a practice exam"}</span></div>
+      <span class="cc-go">Start</span>
+    </a>` : ""}
+    ${courses.length ? `<h3 style="margin-top:4px">Your classes</h3>` : ""}
     ${courses.map((c) => {
       const pct = c.total ? Math.round((c.learned / c.total) * 100) : 0;
       const n = c.exam_date ? daysUntil(c.exam_date) : null;
-      return `<a class="subj" href="#/c/${c.id}" style="--sc:${colorVar(c.color)}">
-        <div class="spread"><h3 class="grow">${esc(c.name)}</h3>${c.plan.perDay && !c.plan.todayLeft && c.plan.todayDone ? `<span class="pill ok">✓ Done for today</span>` : ""}${examText(c) ? `<span class="pill ${n !== null && n <= 7 ? "warn" : ""}">${examText(c)}</span>` : ""}</div>
-        <div class="bar" role="img" aria-label="${pct}% learned"><i style="width:0" data-w="${pct}"></i></div>
-        <div class="spread small muted"><span>${c.learned} of ${c.total} learned</span><span class="pill ${c.plan.cls}" style="white-space:normal;text-align:right">${esc(c.plan.label)}</span></div>
+      const doneToday = c.plan.perDay && !c.plan.todayLeft && c.plan.todayDone;
+      return `<a class="subj2" href="#/c/${c.id}" style="--sc:${colorVar(c.color)}">
+        <div class="spread"><b class="s2-name">${esc(c.name)}</b>${examText(c) ? `<span class="pill ${n !== null && n <= 7 ? "warn" : ""}">${examText(c)}</span>` : ""}</div>
+        <div class="s2-bar"><div class="bar" role="img" aria-label="${pct}% learned"><i style="width:0" data-w="${pct}"></i></div><span>${c.learned}/${c.total}</span></div>
+        <div class="s2-meta">${doneToday ? `<b class="ok">✓ Done today</b> · ` : c.plan.todayLeft ? `<b>${plural(c.plan.todayLeft, "lesson")} today</b> · ` : ""}${esc(c.plan.label)}</div>
       </a>`;
     }).join("")}
-    <a class="addsubj" href="#/add">+ Add a subject</a>
+    <a class="addsubj" href="#/add">+ Add a class</a>
   </div>`;
   requestAnimationFrame(() => setTimeout(() => {
     const f = app.querySelector(".streak-ring .fill"); if (f) f.style.strokeDashoffset = C * (1 - frac);
@@ -611,12 +629,16 @@ async function loadLeaderPreview() {
   try {
     const r = await api("/leaderboard?board=week");
     if (!$("lbprev")) return;
-    const medals = ["🥇", "🥈", "🥉"];
-    box.innerHTML = `<div class="spread"><h3>🏆 This week</h3><a class="small" href="#/leaderboard" style="font-weight:700">See all</a></div>
-      ${r.top.length ? r.top.slice(0, 3).map((p, i) => `<div class="lbrow ${p.me ? "me" : ""}"><span class="medal">${medals[i]}</span><b class="grow">@${esc(p.username)}</b><span class="lbscore">${p.score} XP</span></div>`).join("")
-        : `<p class="muted small">No one's on the board yet this week. Finish a lesson to take first place.</p>`}
-      <p class="small muted">${GUEST ? `<a href="#/join">Make an account</a> to get on the leaderboard.` : r.hidden ? "You're hidden from the leaderboard (change in Settings)." : r.me?.rank ? `You're <b style="color:var(--fg)">#${r.me.rank}</b> with ${r.me.score} XP this week.` : "Earn XP this week to get ranked."}</p>`;
-  } catch { box.remove(); }
+    const top = r.top.slice(0, 3), alone = r.top.length <= 1;
+    const ranked = !GUEST && !r.hidden && r.me?.rank;
+    $("lb-me").textContent = ranked ? `#${r.me.rank}` : "This week";
+    $("lb-me").classList.toggle("small", !ranked);
+    $("lb-me").nextElementSibling.textContent = ranked ? "this week" : GUEST ? "make an account to rank" : r.hidden ? "you're hidden" : "earn XP to rank";
+    $("lb-xp").textContent = `${r.me?.score ?? 0} XP`;
+    $("lb-faces").innerHTML = GUEST ? `<span class="lb-invite">Make an account to compete</span>`
+      : alone ? `<span class="lb-invite">Invite friends to compete ›</span>`
+      : top.map((p, i) => `<span class="lb-face ${p.me ? "me" : ""}" style="--sc:${colorVar(i + 2)}" title="@${esc(p.username)} · ${p.score} XP">${esc((p.username || "?")[0].toUpperCase())}<i>${i + 1}</i></span>`).join("");
+  } catch { /* offline: keep the placeholder */ }
 }
 
 // ---------- leaderboard ----------
@@ -1436,6 +1458,36 @@ function celebrate(before, { xp, accuracy, best, text, title, after }) {
   if (revC) $("go-rev").onclick = () => go(`/s/${revC.id}/review`);
 }
 
+// ---------- Study & Cram: pick the class, then what you need ----------
+route(/^\/study$/, () => {
+  const cs = ME.courses.filter((c) => c.total).sort((a, b) => (a.exam_date || "9999").localeCompare(b.exam_date || "9999"));
+  if (!cs.length) return go("/add");
+  if (cs.length === 1) { history.replaceState(null, "", "#/study/" + cs[0].id); return render(); }
+  app.innerHTML = `${topbar("/")}<div class="stack">
+    <div><div class="kicker" style="color:var(--rev)">Study &amp; Cram · 1 of 2</div><h1 style="margin-top:4px">Which class?</h1><p class="muted">Each class keeps its own words and missed list.</p></div>
+    ${cs.map((c) => { const n = c.exam_date ? daysUntil(c.exam_date) : null; return `<a class="pickclass" href="#/study/${c.id}" style="--sc:${colorVar(c.color)}">
+      <div class="spread"><b><span class="dot"></span>${esc(c.name)}</b>${examText(c) ? `<span class="pill ${n !== null && n <= 7 ? "warn" : ""}">${examText(c)}</span>` : `<span class="pill">No exam set</span>`}</div>
+      <div class="pc-stats"><div><b>${c.total}</b><span>words</span></div><div><b style="color:var(--rev)">${c.due || 0}</b><span>due</span></div><div><b style="color:var(--bad)">${c.missed || 0}</b><span>missed</span></div></div>
+    </a>`; }).join("")}
+    <p class="muted small" style="text-align:center">The class with the closest exam is first.</p>
+  </div>`;
+});
+route(/^\/study\/([\w-]+)$/, (id) => {
+  const c = ME.courses.find((x) => x.id === id);
+  if (!c) return go("/study");
+  const multi = ME.courses.filter((x) => x.total).length > 1, n = c.exam_date ? daysUntil(c.exam_date) : null;
+  const best = store.get("sm-speed-" + id, 0);
+  const opt = (href, cls, icon, title, sub, badge) => `<a class="needopt ${cls}" href="#${href}"><span class="no-icon" aria-hidden="true">${icon}</span><div class="grow"><b>${title}</b><span>${sub}</span></div>${badge ? `<span class="no-badge">${badge}</span>` : `<span class="go-arrow">›</span>`}</a>`;
+  app.innerHTML = `${topbar(multi ? "/study" : "/")}<div class="stack">
+    <div>${classTag(c)}<div class="kicker" style="color:var(--rev)">Study &amp; Cram${multi ? " · 2 of 2" : ""}</div><h1 style="margin-top:4px">What do you need?</h1></div>
+    ${opt(`/cram/${id}/rapid`, "o-cram" + (n !== null && n <= 7 ? " hot" : ""), "⚡", n !== null && n >= 0 && n <= 7 ? `Exam ${n ? `in ${plural(n, "day")}` : "today"}? Cram` : "Cram", "Rapid fire through every word, weakest first")}
+    ${opt(c.due ? `/s/${id}/review` : `/cram/${id}/rapid`, "o-rev", "🔁", "Review", c.due ? "Words that are due so you don't forget them" : "Nothing due right now. This opens rapid fire instead", c.due || "")}
+    ${opt(`/exam/${id}`, "o-exam", "📝", "Practice exam", "Like the real test, with a score")}
+    ${c.missed ? opt(`/cram/${id}/missed`, "o-miss", "🎯", "Fix missed words", "Everything you got wrong, until you get it right", c.missed) : ""}
+    ${opt(`/cram/${id}/speed`, "o-speed", "⏱", "Speed round", best ? `60 seconds. Beat your best: ${best}` : "60 seconds. As many as you can")}
+  </div>`;
+});
+
 // ---------- cram: rapid fire, speed round, missed words (one subject at a time) ----------
 route(/^\/cram\/([\w-]+)\/(rapid|speed|missed)$/, async (id, mode) => {
   let d;
@@ -1745,7 +1797,7 @@ if ("serviceWorker" in navigator) {
     document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") reg.update().catch(() => {}); });
   }).catch(() => {});
   let hadController = !!navigator.serviceWorker.controller, pendingReload = false;
-  const safeToReload = () => !/^#\/(s|exam|add|cram)\//.test(location.hash) && !/^#\/add$/.test(location.hash);
+  const safeToReload = () => !/^#\/(s|exam|add|cram|study)\//.test(location.hash) && !/^#\/add$/.test(location.hash);
   navigator.serviceWorker.addEventListener("controllerchange", () => {
     if (!hadController) { hadController = true; return; } // first install, nothing to refresh
     if (safeToReload()) location.reload(); else pendingReload = true;

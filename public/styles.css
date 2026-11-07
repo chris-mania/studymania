@@ -241,12 +241,12 @@ details summary{list-style:revert}
 /* brand logo: dark-text version on light screens, light-text version on dark screens */
 .logo{display:inline-flex;align-items:center;line-height:0}
 .logo img{height:26px;width:auto;display:block}
-.hero .logo img{height:24px}
+.hero .logo img{height:32px}
 .logo .lg-light{display:none}
 @media (prefers-color-scheme: light){:root:not([data-theme="dark"]) .logo .lg-light{display:block}:root:not([data-theme="dark"]) .logo .lg-dark{display:none}}
 :root[data-theme="light"] .logo .lg-light{display:block}:root[data-theme="light"] .logo .lg-dark{display:none}
 .topbar .logo{flex:1 1 auto;min-width:0}
-.topbar .logo img{height:22px;max-width:100%;object-fit:contain;object-position:left center}
+.topbar .logo img{height:30px;max-width:100%;object-fit:contain;object-position:left center}
 .stats{flex:none;gap:2px}
 .stat{white-space:nowrap;padding:6px 7px}
 
@@ -344,3 +344,70 @@ details summary{list-style:revert}
 .classtag{display:inline-flex;align-items:center;gap:8px;align-self:flex-start;max-width:100%;margin:-4px 0 8px;padding:5px 12px 5px 10px;border-radius:999px;
   background:color-mix(in srgb,var(--sc) 16%,var(--surface));border:1.5px solid color-mix(in srgb,var(--sc) 45%,transparent);font:700 14px/1.2 var(--body);color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .classtag .dot{width:9px;height:9px;border-radius:50%;background:var(--sc);flex:none}
+
+/* ===== Home: leaderboard strip on top ===== */
+.lbtop{display:flex;align-items:center;gap:12px;text-decoration:none;color:var(--fg);border-radius:20px;padding:12px 14px;
+  background:linear-gradient(135deg,color-mix(in srgb,var(--gold) 22%,var(--surface)),var(--surface) 70%);border:1.5px solid color-mix(in srgb,var(--gold) 45%,transparent)}
+.lb-rank{display:flex;align-items:center;gap:10px;flex:none}
+.lb-trophy{font-size:34px;line-height:1;filter:drop-shadow(0 2px 6px rgba(242,201,76,.45))}
+.lb-rank b{display:block;font:700 26px/1 var(--display);color:var(--gold)}
+.lb-rank span{display:block;font-size:12px;color:var(--muted);font-weight:700;margin-top:2px}
+.lb-faces{flex:1 1 auto;min-width:0;display:flex;align-items:center;justify-content:center}
+.lb-face{position:relative;width:34px;height:34px;border-radius:50%;background:var(--sc);color:var(--bg);display:flex;align-items:center;justify-content:center;font:700 15px/1 var(--display);border:2.5px solid var(--surface);margin-left:-8px}
+.lb-face:first-child{margin-left:0}
+.lb-face.me{box-shadow:0 0 0 2px var(--gold)}
+.lb-face i{position:absolute;right:-4px;bottom:-4px;width:16px;height:16px;border-radius:50%;background:var(--gold);color:#3a2a00;font:700 10px/16px var(--body);font-style:normal;text-align:center}
+.lb-invite{font-size:13px;font-weight:700;color:var(--muted);text-align:center}
+.lb-side{text-align:right;flex:none}
+.lb-side b{display:block;font-size:15px;color:var(--gold)}
+.lb-side span{display:block;font-size:12px;color:var(--muted)}
+
+/* ===== Home: compact streak card ===== */
+.hero2{display:flex;flex-direction:column;gap:14px;padding:16px}
+.h2-top{display:flex;align-items:center;gap:14px}
+.streak-ring.mini{width:64px;height:64px;flex:none}
+.streak-ring.mini .hflame{font-size:26px}
+.h2-streak{font:600 22px/1.15 var(--display)}
+.h2-goal{margin:3px 0 0;font-size:15px;font-weight:700;color:var(--muted)}
+.h2-goal.done{color:var(--good)}
+.h2-pills{display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex:none}
+.donecard{border:2px solid color-mix(in srgb,var(--good) 40%,transparent);display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.donecard h3{font-family:var(--display);font-size:20px}
+.donecard p{margin:0}
+
+/* ===== Home: Study & Cram (small, always there) ===== */
+.cramcard{display:flex;align-items:center;gap:12px;text-decoration:none;color:var(--fg);background:var(--surface);border:2px solid var(--rev-deep);border-radius:18px;padding:12px 14px}
+.cc-icon{width:42px;height:42px;border-radius:13px;background:var(--rev-soft);display:flex;align-items:center;justify-content:center;font-size:20px;flex:none}
+.cramcard b{display:block;font:600 18px/1.2 var(--display)}
+.cramcard .grow span{display:block;font-size:13px;color:var(--muted);margin-top:2px}
+.cc-go{background:var(--rev);color:var(--rev-ink);font-weight:700;font-size:15px;border-radius:12px;padding:10px 14px;box-shadow:0 3px 0 var(--rev-deep);flex:none}
+
+/* ===== Home: class cards ===== */
+.subj2{display:flex;flex-direction:column;gap:9px;text-decoration:none;color:var(--fg);background:var(--surface);border-radius:18px;padding:14px 16px;border-left:4px solid var(--sc)}
+.s2-name{font-size:17px}
+.s2-bar{display:flex;align-items:center;gap:10px}
+.s2-bar .bar{flex:1 1 auto}
+.s2-bar .bar i{background:var(--sc)}
+.s2-bar span{font-size:13px;font-weight:700;color:var(--muted)}
+.s2-meta{font-size:13px;color:var(--muted)}
+.s2-meta b{color:var(--fg)} .s2-meta b.ok{color:var(--good)}
+
+/* ===== Study & Cram screens ===== */
+.pickclass{display:flex;flex-direction:column;gap:12px;text-decoration:none;color:var(--fg);background:var(--surface);border:2px solid color-mix(in srgb,var(--sc) 55%,transparent);border-radius:20px;padding:16px}
+.pickclass .dot{display:inline-block;width:12px;height:12px;border-radius:50%;background:var(--sc);margin-right:8px}
+.pickclass b{font-size:17px}
+.pc-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.pc-stats div{background:var(--raised);border-radius:12px;padding:8px 10px}
+.pc-stats b{display:block;font-size:17px}
+.pc-stats span{font-size:12px;color:var(--muted)}
+.needopt{display:flex;align-items:center;gap:14px;text-decoration:none;color:var(--fg);background:var(--surface);border:2px solid transparent;border-radius:20px;padding:14px;min-height:76px;box-sizing:border-box}
+.needopt b{display:block;font-size:17px}
+.needopt .grow span{display:block;font-size:14px;color:var(--muted);margin-top:2px}
+.no-icon{width:48px;height:48px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:22px;flex:none;background:var(--raised)}
+.no-badge{font-weight:700;font-size:14px;padding:5px 10px;border-radius:999px;background:var(--rev-soft);color:var(--rev)}
+.o-cram .no-icon{background:var(--flame-soft)} .o-cram.hot{border-color:var(--flame)}
+.o-rev .no-icon{background:var(--rev-soft)}
+.o-exam .no-icon{background:var(--good-soft)}
+.o-miss .no-icon{background:var(--bad-soft)} .o-miss .no-badge{background:var(--bad-soft);color:var(--bad)}
+.o-speed .no-icon{background:var(--gold-soft)}
+.lb-rank b.small{font-size:18px;color:var(--fg)}
