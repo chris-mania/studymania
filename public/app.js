@@ -8,7 +8,9 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m]));
 const shuffle = (a) => { for (let i = a.length - 1; i > 0; i--) { const j = (Math.random() * (i + 1)) | 0; [a[i], a[j]] = [a[j], a[i]]; } return a; };
 const pad = (n) => String(n).padStart(2, "0");
-const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
+// Your study day ends at 4 AM, not midnight: a lesson at 12:30 AM still counts for the day before.
+const DAY_STARTS_HOUR = 4;
+const todayStr = () => { const d = new Date(Date.now() - DAY_STARTS_HOUR * 3600e3); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
 const daysUntil = (day) => daysBetween(todayStr(), day);
 const tz = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return "America/New_York"; } };
 const store = {
@@ -552,7 +554,8 @@ route(/^\/$/, () => {
   const items = courses.filter((c) => c.total && c.id !== nx?.c.id).map((c) => ({ c, lessons: c.plan.todayLeft, due: reviewSkipped(c.id) ? 0 : c.due, review: c.plan.phase === "review" })).filter((x) => x.lessons || x.due || x.review || (G.done && x.c.next));
   const gap = user.last_study_day ? daysBetween(user.last_study_day, todayStr()) : 0;
   const back = user.freeze_needed ? `<div class="notice">❄️ <b style="display:inline">You missed ${plural(user.freeze_needed, "day")}.</b> A streak freeze will save your ${user.streak}-day streak as soon as you finish a lesson today.</div>`
-    : !user.streak && gap >= 2 && user.best_streak ? `<div class="notice">👋 <b style="display:inline">Welcome back.</b> Your streak reset, but your progress didn't. One lesson today gets you rolling again.</div>` : "";
+    : gap === 2 && user.streak && courses.some((c) => c.plan.perDay) ? `<div class="notice">📅 <b style="display:inline">You missed yesterday. No stress.</b> The lessons you missed are spread over your remaining days, so each day has a little more. Finish today's to keep going.</div>`
+    : !user.streak && gap >= 2 && user.best_streak ? `<div class="notice">👋 <b style="display:inline">Welcome back.</b> Your streak reset, but your progress didn't. The lessons you missed are spread over your remaining days. One lesson today gets you rolling again.</div>` : "";
 
   const dueAll = courses.reduce((a, c) => a + (c.due || 0), 0), missedAll = courses.reduce((a, c) => a + (c.missed || 0), 0);
   const soon = courses.filter((c) => c.exam_date && daysUntil(c.exam_date) >= 0).sort((a, b) => a.exam_date.localeCompare(b.exam_date))[0];
@@ -585,7 +588,8 @@ route(/^\/$/, () => {
     ${G.done && nx && courses.length ? `<section class="card donecard">
         <h3>You're done for today</h3>
         <p class="muted">${courses.length > 1 ? "Every class is covered." : "Today's lessons are covered."} ${nx.k === "next" ? `Next up: ${esc(nx.c.name)}, Lesson ${nx.c.next?.n ?? ""}.` : ""}</p>
-        <a class="btn small" href="#${nextHref(nx)}">${nx.k === "review" ? "Review" : nx.k === "cram" ? "Cram" : "Bonus lesson"} · ${esc(nx.c.name)}</a>
+        <a class="btn small" href="#${nextHref(nx)}">${nx.k === "review" ? "Review" : nx.k === "cram" ? "Cram" : "Get ahead on tomorrow"} · ${esc(nx.c.name)}</a>
+        ${nx.k === "next" ? `<p class="muted small">Lessons you do now come off your plan, so tomorrow gets lighter.</p>` : ""}
       </section>`
       : nx ? `<a class="upnext ${nx.k === "review" ? "is-review" : ""}" href="#${nextHref(nx)}" style="--sc:${nx.k === "review" ? "var(--rev)" : colorVar(nx.c.color)}">
         <span class="kicker">${nx.k === "review" ? "🔁 Review" : "Up next"} · ${esc(nx.c.name)}</span>
@@ -1275,6 +1279,21 @@ route(/^\/s\/([\w-]+)\/(next|review|quiz|lesson|misses)(?:\/(\d+))?$/, async (id
     window.scrollTo(0, 0); // every new question starts at the top, progress bar in view
     $("x").onclick = quit;
   }
+  // Leaving the app mid-lesson (texting, switching apps): save your spot and send what you answered right away.
+  const sessHash = location.hash;
+  const onHide = () => {
+    if (location.hash !== sessHash) return document.removeEventListener("visibilitychange", onHide);
+    if (document.visibilityState !== "hidden" || S.i === 0) return;
+    persist();
+    const list = pending(), xp = S.xp - S.xpSent;
+    if (!list.length && !xp) return;
+    markSent(list); S.xpSent = S.xp; persist();
+    const body = { course_id: id, kind: mode === "learn" ? "lesson" : "review", results: list.map(({ tb, ...r }) => r), xp, counts: false, round_id: uid() };
+    if (GUEST) return postStudy(body).catch(() => {});
+    const q = store.get("sm-outbox", []); q.push({ body, day: T }); store.set("sm-outbox", q); // kept on the phone first, sent next
+    flushOutbox();
+  };
+  document.addEventListener("visibilitychange", onHide);
   async function quit() {
     if (S.i === 0) return go(`/c/${id}`);
     const list = pending(), frac = S.i / steps.length, counts = frac >= COUNTS_AT && !S.counted;
