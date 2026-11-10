@@ -1,5 +1,5 @@
 /* Study Mania — app screens */
-import { addDays, daysBetween, niceDate, buildLessons, planFor, pickThrowbacks, secondReminderHour, mergeMissed } from "./shared.mjs";
+import { addDays, daysBetween, niceDate, buildLessons, planFor, lessonsAndPlan, isTricky, pickThrowbacks, secondReminderHour, mergeMissed } from "./shared.mjs";
 import { localApi, hasGuestData, guestExport, clearGuest } from "./local.mjs";
 
 // ---------- helpers ----------
@@ -137,7 +137,8 @@ let MISSES = {}; // courseId -> card ids missed on the last practice exam
 async function loadMe() { ME = await api("/me"); return ME; }
 async function loadCourse(id) {
   const d = await api(`/courses/${id}`);
-  d.lessons = buildLessons(d.cards);
+  // Same lessons the server plans with (bigger ones while catching up after a missed day).
+  d.lessons = lessonsAndPlan(d.course, d.cards, d.progress, todayStr()).lessons;
   courseCache[id] = d;
   return d;
 }
@@ -524,8 +525,13 @@ function wireSetup() {
 
 // ---------- home ----------
 const reviewMins = (due) => Math.max(2, Math.round(Math.min(12, due) * 0.3));
+// The class you're working on today. "Next" keeps you in it until its lessons for today are done.
+const curClass = () => { const c = store.get("sm-cur", null); return c && c.day === todayStr() ? c.id : null; };
+const setCurClass = (id) => store.set("sm-cur", { id, day: todayStr() });
 function upNext() {
-  const cs = ME.courses.filter((c) => c.total).sort((a, b) => (a.exam_date || a.finish_by || "9999").localeCompare(b.exam_date || b.finish_by || "9999"));
+  const cur = curClass();
+  const cs = ME.courses.filter((c) => c.total).sort((a, b) => (a.exam_date || a.finish_by || "9999").localeCompare(b.exam_date || b.finish_by || "9999"))
+    .sort((a, b) => (b.id === cur && b.plan.todayLeft > 0) - (a.id === cur && a.plan.todayLeft > 0));
   const f = (fn) => cs.find(fn);
   let c;
   if ((c = f((x) => x.plan.todayLeft > 0 && x.next))) return { c, k: "next", title: `Lesson ${c.next.n} · ${c.next.topic}`, sub: `${plural(c.next.words, "new word")}${c.learned ? " + 3 throwbacks" : ""} · about ${c.next.words + 1} min` };
@@ -554,7 +560,7 @@ route(/^\/$/, () => {
   const items = courses.filter((c) => c.total && c.id !== nx?.c.id).map((c) => ({ c, lessons: c.plan.todayLeft, due: reviewSkipped(c.id) ? 0 : c.due, review: c.plan.phase === "review" })).filter((x) => x.lessons || x.due || x.review || (G.done && x.c.next));
   const gap = user.last_study_day ? daysBetween(user.last_study_day, todayStr()) : 0;
   const back = user.freeze_needed ? `<div class="notice">❄️ <b style="display:inline">You missed ${plural(user.freeze_needed, "day")}.</b> A streak freeze will save your ${user.streak}-day streak as soon as you finish a lesson today.</div>`
-    : gap === 2 && user.streak && courses.some((c) => c.plan.perDay) ? `<div class="notice">📅 <b style="display:inline">You missed yesterday. No stress.</b> The lessons you missed are spread over your remaining days, so each day has a little more. Finish today's to keep going.</div>`
+    : gap === 2 && user.streak && courses.some((c) => c.plan.perDay) ? `<div class="notice">📅 <b style="display:inline">You missed yesterday. No stress.</b> Same number of lessons a day: your next few lessons just have a few extra words until you're caught up. Finish today's to keep going.</div>`
     : !user.streak && gap >= 2 && user.best_streak ? `<div class="notice">👋 <b style="display:inline">Welcome back.</b> Your streak reset, but your progress didn't. The lessons you missed are spread over your remaining days. One lesson today gets you rolling again.</div>` : "";
 
   const dueAll = courses.reduce((a, c) => a + (c.due || 0), 0), missedAll = courses.reduce((a, c) => a + (c.missed || 0), 0);
@@ -579,6 +585,7 @@ route(/^\/$/, () => {
         </div>
         <div class="h2-pills"><span class="pill xp-pill">⚡ ${user.xp}</span>${user.freezes ? `<span class="pill" title="Streak freezes: each one covers a missed day">❄️ ${user.freezes}</span>` : ""}</div>
       </div>
+      ${courses.filter((c) => c.plan.perDay).length > 1 ? `<div class="classchips">${courses.filter((c) => c.plan.perDay).sort((a, b) => (a.id === curClass() ? -1 : b.id === curClass() ? 1 : 0)).map((c) => `<a class="cchip ${c.plan.todayLeft ? "" : "done"}" href="#/s/${c.id}/next" style="--sc:${colorVar(c.color)}"><span class="dot"></span><span class="cc-name">${esc(c.name)}</span><b>${c.plan.todayLeft ? `${c.plan.todayLeft} left` : "✓ done"}</b></a>`).join("")}</div>` : ""}
       <div class="week">${days.map((d) => `<div class="dayc ${hit.has(d) ? "hit" : ""} ${d === todayStr() ? "now" : ""}"><i>${hit.has(d) ? "🔥" : ""}</i>${"SMTWTFS"[new Date(d + "T12:00").getDay()]}</div>`).join("")}</div>
     </section>
     ${back}
@@ -1013,7 +1020,8 @@ route(/^\/c\/([\w-]+)$/, async (id) => {
   try { d = await loadCourse(id); } catch (e) { toast(e.message); return go("/"); }
   const c = d.course;
   const draw = () => {
-    const T = todayStr(), p = planFor(c, d.lessons, d.progress, T);
+    const T = todayStr(), lp = lessonsAndPlan(c, d.cards, d.progress, T), p = lp.plan;
+    d.lessons = lp.lessons;
     const left = d.lessons.filter((l) => !lessonDone(d, l)), nextL = left[0];
     const learned = d.cards.filter((k) => isLearned(d, k)).length;
     const strong = d.cards.filter((k) => (d.progress[k.id]?.box || 0) >= 2).length;
@@ -1254,6 +1262,7 @@ route(/^\/s\/([\w-]+)\/(next|review|quiz|lesson|misses)(?:\/(\d+))?$/, async (id
   }
 
   // Round state. Lessons are saved on this device so you can pick up where you left off.
+  setCurClass(id);
   const KEY = mode === "learn" ? `sm-sess-${id}-${lesson.n}` : null;
   let S = { i: 0, results: {}, tbResults: {}, missed: [], xp: 0, xpSent: 0, sent: [], counted: false, combo: 0, best: 0, right: 0, asked: 0 };
   const persist = () => KEY && store.set(KEY, { ...S, day: T, steps: steps.map((st) => ({ t: st.t, id: st.k.id, again: !!st.again, retry: !!st.retry, tb: !!st.tb, def: !!st.def })) });
@@ -1458,7 +1467,10 @@ function celebrate(before, { xp, accuracy, best, text, title, after }) {
   const extra = before.used_freeze ? `<div class="notice">❄️ A streak freeze covered the day you missed. Your streak is safe.</div>` : before.earned_freeze ? `<div class="notice ok">❄️ <b style="display:inline">You earned a streak freeze!</b> It'll save your streak if you ever miss a day.</div>` : "";
   const due = ME.courses.reduce((a, c) => a + (reviewSkipped(c.id) ? 0 : c.due), 0), reviewed = (ME.today.reviews || 0) > 0;
   // After a lesson, if words are due, reviewing is the big next step.
-  const revC = after === "learn" ? ME.courses.filter((c) => c.due > 0 && !reviewSkipped(c.id)).sort((a, b) => b.due - a.due)[0] : null;
+  // Stay in the same class: only offer a review of the class you just studied.
+  const curC = ME.courses.find((c) => c.id === curClass());
+  const revC = after === "learn" && curC && curC.due > 0 && !reviewSkipped(curC.id) ? curC : null;
+  const nn = upNext();
   app.innerHTML = `<div class="sess"><div class="cele">
     <div class="big-emoji">${emoji}</div><h1>${head}</h1>
     <p class="muted">${text} ${best >= 3 ? `Best run: ${best} in a row.` : ""}</p>
@@ -1471,7 +1483,7 @@ function celebrate(before, { xp, accuracy, best, text, title, after }) {
     <p class="muted small">${G.done ? "Today's goal is done. Anything more is a bonus that puts you ahead." : `${plural(G.goal - G.did, "more " + G.unit)} to hit today's goal.`}</p>
   </div><div class="footbtn stack">
     ${revC ? `<button class="btn rev block big" id="go-rev">🔁 Review ${plural(Math.min(12, revC.due), "word")} now<span>${esc(revC.name)} · about ${reviewMins(revC.due)} min</span></button>` : ""}
-    <button class="btn ${revC ? "" : "primary"} block" id="more">${G.done ? "Do a bonus round" : `Next ${G.unit} (${G.goal - G.did} to go)`}</button><a class="btn ghost block" href="#/">Done for now</a></div></div>`;
+    <button class="btn ${revC ? "" : "primary"} block" id="more">${G.done ? "Do a bonus round" : `Next ${G.unit} (${G.goal - G.did} to go)`}${nn && !G.done ? `<span class="btn-sub">${esc(nn.c.name)}${nn.k === "next" && nn.c.next ? ` · Lesson ${nn.c.next.n}` : ""}</span>` : ""}</button><a class="btn ghost block" href="#/">Done for now</a></div></div>`;
   countUp($("xpn"), xp); chime("win"); buzz([20, 60, 20, 60, 40]); confetti(goalHit || streakUp ? 1.6 : 0.8);
   $("more").onclick = () => startBest();
   if (revC) $("go-rev").onclick = () => go(`/s/${revC.id}/review`);
@@ -1503,21 +1515,26 @@ route(/^\/study\/([\w-]+)$/, (id) => {
     ${opt(c.due ? `/s/${id}/review` : `/cram/${id}/rapid`, "o-rev", "🔁", "Review", c.due ? "Words that are due so you don't forget them" : "Nothing due right now. This opens rapid fire instead", c.due || "")}
     ${opt(`/exam/${id}`, "o-exam", "📝", "Practice exam", "Like the real test, with a score")}
     ${c.missed ? opt(`/cram/${id}/missed`, "o-miss", "🎯", "Fix missed words", "Everything you got wrong, until you get it right", c.missed) : ""}
+    ${c.tricky ? opt(`/cram/${id}/tricky`, "o-tricky", "🧠", "Tricky words", "Every word you've missed before, even once. They also come back more often in reviews.", c.tricky) : ""}
     ${opt(`/cram/${id}/speed`, "o-speed", "⏱", "Speed round", best ? `60 seconds. Beat your best: ${best}` : "60 seconds. As many as you can")}
   </div>`;
 });
 
 // ---------- cram: rapid fire, speed round, missed words (one subject at a time) ----------
-route(/^\/cram\/([\w-]+)\/(rapid|speed|missed)$/, async (id, mode) => {
+route(/^\/cram\/([\w-]+)\/(rapid|speed|missed|tricky)$/, async (id, mode) => {
+  setCurClass(id);
   let d;
   try { d = await loadCourse(id); } catch (e) { toast(e.message); return go("/"); }
   const missed0 = missedList(d);
   // Weakest first: missed words, then learned words by how well you know them, then ones not learned yet.
-  const weight = (k) => (missed0.includes(k.id) ? -1 : isLearned(d, k) ? d.progress[k.id].box || 0 : 9);
-  let pool = mode === "missed" ? shuffle(d.cards.filter((k) => missed0.includes(k.id))) : shuffle([...d.cards]).sort((a, b) => weight(a) - weight(b));
-  if (!pool.length) { toast(mode === "missed" ? "No missed words in this subject. Nice." : "This subject has no words yet."); return go(`/c/${id}`); }
-  const ROUND = mode === "rapid" ? Math.min(25, pool.length) : mode === "missed" ? pool.length : Infinity;
-  const SECS = 60, title = { rapid: "⚡ Rapid fire", speed: "⏱ Speed round", missed: "🎯 Missed words" }[mode];
+  // Weakest first: missed words, then tricky ones (missed before, even once), then by how well you know them.
+  const weight = (k) => (missed0.includes(k.id) ? -2 : isTricky(d.progress[k.id]) ? -1 : isLearned(d, k) ? d.progress[k.id].box || 0 : 9);
+  let pool = mode === "missed" ? shuffle(d.cards.filter((k) => missed0.includes(k.id)))
+    : mode === "tricky" ? shuffle(d.cards.filter((k) => isTricky(d.progress[k.id])))
+    : shuffle([...d.cards]).sort((a, b) => weight(a) - weight(b));
+  if (!pool.length) { toast(mode === "missed" ? "No missed words in this subject. Nice." : mode === "tricky" ? "No tricky words yet. Nice." : "This subject has no words yet."); return go(`/c/${id}`); }
+  const ROUND = mode === "rapid" ? Math.min(25, pool.length) : mode === "missed" || mode === "tricky" ? Math.min(30, pool.length) : Infinity;
+  const SECS = 60, title = { rapid: "⚡ Rapid fire", speed: "⏱ Speed round", missed: "🎯 Missed words", tricky: "🧠 Tricky words" }[mode];
   const S = { i: 0, right: 0, asked: 0, combo: 0, best: 0, xp: 0, wrong: new Set(), fixed: new Set(), again: new Set(), over: false, t0: 0, saved: false };
   let queue = pool.slice(0, ROUND === Infinity ? pool.length : ROUND), timer = null;
   const ask = (k) => (isPair(k) ? pairQ(d, k) : [meaningQ, termQ, tfQ][(Math.random() * 3) | 0](d, k));
@@ -1601,6 +1618,7 @@ route(/^\/cram\/([\w-]+)\/(rapid|speed|missed)$/, async (id, mode) => {
 
 // ---------- practice exam ----------
 route(/^\/exam\/([\w-]+)$/, async (id) => {
+  setCurClass(id);
   let d;
   try { d = await loadCourse(id); } catch (e) { toast(e.message); return go("/"); }
   const learnedTopics = new Set(d.cards.filter((k) => isLearned(d, k)).map((k) => k.topic));

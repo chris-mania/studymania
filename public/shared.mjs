@@ -19,8 +19,12 @@ export function niceDate(day) {
 // ---------- spaced repetition ----------
 // With an exam date, nothing is allowed to "wait" past the exam: every learned word
 // comes back during the last few days before it (the final sweep), spread over 3 days.
-export function nextReview(prevBox, ok, mode, day, examDate) {
-  const box = mode === "learn" ? (ok ? 1 : 0) : ok ? Math.min(5, (prevBox ?? 0) + 1) : 0;
+// Tricky words (missed at least once, ever) never get the longest gaps: they top out at 4 days.
+export const TRICKY_MAX_BOX = 3;
+export const isTricky = (p) => (p?.wrong_count || 0) > 0;
+export function nextReview(prevBox, ok, mode, day, examDate, tricky = false) {
+  const top = tricky || !ok ? TRICKY_MAX_BOX : 5;
+  const box = mode === "learn" ? (ok ? 1 : 0) : ok ? Math.min(top, (prevBox ?? 0) + 1) : 0;
   let due = addDays(day, INTERVALS[box]);
   if (isDay(examDate) && day < examDate) {
     const sweep = addDays(examDate, -1 - (box % 3));
@@ -42,7 +46,7 @@ export function pickThrowbacks(cards, progress, excludeIds, today, n = 3) {
   if (!pool.length) return [];
   const score = (c) => {
     const p = progress[c.id];
-    return (p.due && p.due <= today ? 0 : 10) + (p.box || 0) * 2 - Math.min(6, p.wrong_count || 0) + Math.random() * 1.5;
+    return (p.due && p.due <= today ? 0 : 10) + (p.box || 0) * 2 - Math.min(6, p.wrong_count || 0) - (isTricky(p) ? 3 : 0) + Math.random() * 1.5;
   };
   const sorted = [...pool].sort((a, b) => score(a) - score(b));
   const out = sorted.slice(0, Math.max(0, n - 1));
@@ -64,7 +68,7 @@ export function secondReminderHour(first) {
 
 // ---------- lessons ----------
 // Cards are grouped by (batch of notes, topic), in order, then split into lessons of up to 5.
-export function buildLessons(cards) {
+export function buildLessons(cards, big = null) {
   const keys = [], groups = {};
   for (const c of cards) {
     const k = (c.added_day || "") + "|" + (c.topic || "General");
@@ -73,8 +77,19 @@ export function buildLessons(cards) {
   }
   const lessons = [];
   for (const k of keys) {
-    const ws = groups[k], n = Math.ceil(ws.length / 5), size = Math.ceil(ws.length / n);
-    for (let i = 0; i < n; i++) lessons.push({ topic: ws[0].topic || "General", batch: ws[0].added_day || "", part: n > 1 ? i + 1 : 0, cards: ws.slice(i * size, (i + 1) * size) });
+    const ws = groups[k];
+    // Catching up after a missed day: words you haven't learned yet go in bigger lessons (big.size words).
+    const parts = big ? [[ws.filter(big.isOld), 5], [ws.filter((c) => !big.isOld(c)), big.size]] : [[ws, 5]];
+    const chunks = [];
+    for (const [list, max] of parts) {
+      if (!list.length) continue;
+      // Normal: lessons of at most 5. Catch-up: about `max` words each, never more than 10.
+      let n = max === 5 ? Math.ceil(list.length / 5) : Math.max(1, Math.round(list.length / max));
+      while (Math.ceil(list.length / n) > Math.max(5, CATCHUP_MAX_WORDS)) n++;
+      const size = Math.ceil(list.length / n);
+      for (let i = 0; i < n; i++) chunks.push(list.slice(i * size, (i + 1) * size));
+    }
+    chunks.forEach((cs, i) => lessons.push({ topic: ws[0].topic || "General", batch: ws[0].added_day || "", part: chunks.length > 1 ? i + 1 : 0, cards: cs }));
   }
   lessons.forEach((l, i) => (l.n = i + 1));
   return lessons;
@@ -162,21 +177,48 @@ export function planFor(course, lessons, progress, today) {
 }
 
 // Summary used on the home screen.
+// Lessons + today's plan. Missed a day? Keep the same number of lessons a day you were doing,
+// and put the missed words into your next lessons instead (a few extra words each, max 9).
+export const CATCHUP_MAX_WORDS = 10;
+export function lessonsAndPlan(course, cards, progress, today) {
+  let lessons = buildLessons(cards), plan = planFor(course, lessons, progress, today);
+  if (plan.phase !== "learn" || !plan.left) return { lessons, plan };
+  const studied = Object.values(progress).map((p) => p?.learned_at).filter((d) => d && d < today);
+  if (!studied.length) return { lessons, plan };
+  const last = studied.reduce((a, b) => (b > a ? b : a));
+  if (daysBetween(last, today) < 2) return { lessons, plan }; // didn't miss a day
+  // The pace you were on the last day you studied this class.
+  const before = {}; for (const [id, p] of Object.entries(progress)) if (p?.learned_at && p.learned_at < last) before[id] = p;
+  const pace = planFor(course, buildLessons(cards), before, last).perDay || 1;
+  if (plan.perDay <= pace) return { lessons, plan };
+  const isOld = (c) => !!progress[c.id]?.learned_at && progress[c.id].learned_at < today;
+  const wordsLeft = cards.filter((c) => !isOld(c)).length;
+  const startLeftLessons = Math.round(plan.left + plan.todayDone);
+  const target = Math.max(1, Math.ceil((startLeftLessons * pace) / plan.perDay));
+  const size = Math.min(CATCHUP_MAX_WORDS, Math.max(6, Math.ceil(wordsLeft / target)));
+  const bigLessons = buildLessons(cards, { size, isOld });
+  const bigPlan = planFor(course, bigLessons, progress, today);
+  if (bigPlan.perDay >= plan.perDay) return { lessons, plan }; // didn't help
+  bigPlan.catchup = { extra: size - 5, pace: bigPlan.perDay };
+  bigPlan.label = `Catching up: ${bigPlan.perDay} lesson${bigPlan.perDay > 1 ? "s" : ""} a day with a few extra words · ${bigPlan.label.replace(/^\d+ lessons? \(~\d+ words\) a day · /, "")}`;
+  return { lessons: bigLessons, plan: bigPlan };
+}
+
 export function summarize(course, cards, progress, today) {
-  const lessons = buildLessons(cards);
-  const p = planFor(course, lessons, progress, today);
-  let learned = 0, due = 0, strong = 0;
+  const { lessons, plan: p } = lessonsAndPlan(course, cards, progress, today);
+  let learned = 0, due = 0, strong = 0, tricky = 0;
   for (const c of cards) {
     const pr = progress[c.id];
     if (pr?.learned_at) { learned++; if (pr.due && pr.due <= today) due++; }
     if ((pr?.box || 0) >= 2) strong++;
+    if (isTricky(pr)) tricky++;
   }
   return {
     id: course.id, name: course.name, color: course.color || 0, exam_date: course.exam_date || null,
     review_days: course.review_days ?? 3, finish_by: course.finish_by || null, as_you_go: course.as_you_go ? 1 : 0, keep_up_days: course.keep_up_days ?? 3,
     missed: mergeMissed(course.missed, [], []).filter((id) => cards.some((k) => k.id === id)).length,
     more_total: course.more_total ?? null, more_have: course.more_have ?? null, more_every: course.more_every || null, more_share: course.more_share ?? null, notes_done: course.notes_done ? 1 : 0,
-    total: cards.length, learned, due, strong, lessons: lessons.length, plan: p,
+    total: cards.length, learned, due, strong, tricky, lessons: lessons.length, plan: p,
     next: (() => { const l = lessons.find((x) => !x.cards.every((c) => progress[c.id]?.learned_at)); return l ? { n: l.n, topic: l.topic, words: l.cards.length } : null; })(),
   };
 }

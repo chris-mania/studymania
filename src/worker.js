@@ -128,7 +128,7 @@ const ownCourse = (env, id, userId) => env.DB.prepare("SELECT * FROM courses WHE
 async function courseSummaries(env, userId, day) {
   const courses = (await env.DB.prepare("SELECT * FROM courses WHERE user_id = ? ORDER BY COALESCE(exam_date, finish_by, '9999'), created_at").bind(userId).all()).results;
   const cards = (await env.DB.prepare("SELECT id, course_id, topic, added_day FROM cards WHERE user_id = ? ORDER BY course_id, ord").bind(userId).all()).results;
-  const prog = (await env.DB.prepare("SELECT card_id, box, due, learned_at FROM progress WHERE user_id = ?").bind(userId).all()).results;
+  const prog = (await env.DB.prepare("SELECT card_id, box, due, learned_at, wrong_count FROM progress WHERE user_id = ?").bind(userId).all()).results;
   const progress = Object.fromEntries(prog.map((p) => [p.card_id, p]));
   return courses.map((c) => summarize(c, cards.filter((k) => k.course_id === c.id), progress, day));
 }
@@ -471,8 +471,8 @@ async function api(req, env, url) {
     const stmts = [];
     for (const r of results) {
       const cid = String(r.card_id || "");
-      const prev = await env.DB.prepare("SELECT box FROM progress WHERE card_id = ? AND course_id = ?").bind(cid, course.id).first();
-      const nr = nextReview(prev?.box, !!r.ok, r.mode === "learn" ? "learn" : "review", day, course.exam_date);
+      const prev = await env.DB.prepare("SELECT box, wrong_count FROM progress WHERE card_id = ? AND course_id = ?").bind(cid, course.id).first();
+      const nr = nextReview(prev?.box, !!r.ok, r.mode === "learn" ? "learn" : "review", day, course.exam_date, (prev?.wrong_count || 0) > 0);
       stmts.push(env.DB.prepare(
         `INSERT INTO progress (card_id, user_id, course_id, box, due, learned_at, right_count, wrong_count)
          SELECT id, ?, ?, ?, ?, ?, ?, ? FROM cards WHERE id = ? AND course_id = ?

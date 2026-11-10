@@ -411,3 +411,12 @@ details summary{list-style:revert}
 .o-miss .no-icon{background:var(--bad-soft)} .o-miss .no-badge{background:var(--bad-soft);color:var(--bad)}
 .o-speed .no-icon{background:var(--gold-soft)}
 .lb-rank b.small{font-size:18px;color:var(--fg)}
+/* lessons left today, one chip per class */
+.classchips{display:flex;flex-wrap:wrap;gap:8px}
+.cchip{display:inline-flex;align-items:center;gap:7px;max-width:100%;text-decoration:none;color:var(--fg);background:var(--raised);border:1.5px solid color-mix(in srgb,var(--sc) 45%,transparent);border-radius:999px;padding:6px 12px;font-size:14px}
+.cchip .dot{width:9px;height:9px;border-radius:50%;background:var(--sc);flex:none}
+.cchip .cc-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px}
+.cchip b{flex:none}
+.cchip.done{opacity:.7} .cchip.done b{color:var(--good)}
+.btn-sub{display:block;font-size:12px;font-weight:600;opacity:.75;margin-top:2px}
+.o-tricky .no-icon{background:var(--rev-soft)}

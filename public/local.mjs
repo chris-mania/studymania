@@ -110,7 +110,7 @@ export async function localApi(path, method, body, day) {
     for (const r of b.results || []) {
       if (!c.cards.some((k) => k.id === r.card_id)) continue;
       const prev = c.progress[r.card_id];
-      const nr = nextReview(prev?.box, !!r.ok, r.mode === "learn" ? "learn" : "review", day, c.exam_date);
+      const nr = nextReview(prev?.box, !!r.ok, r.mode === "learn" ? "learn" : "review", day, c.exam_date, (prev?.wrong_count || 0) > 0);
       c.progress[r.card_id] = { box: nr.box, due: nr.due, learned_at: prev?.learned_at || day, wrong_count: (prev?.wrong_count || 0) + (r.ok ? 0 : 1) };
     }
     if (b.exam?.total > 0) c.exams.push({ day, score: b.exam.score, total: b.exam.total });
