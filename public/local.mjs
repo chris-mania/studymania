@@ -88,6 +88,15 @@ export async function localApi(path, method, body, day) {
     if (!sub && method === "PATCH") { Object.assign(c, planFields(b, c)); if (b.name) c.name = String(b.name).slice(0, 80); save(d); return { ok: true }; }
     if (!sub && method === "DELETE") { d.courses = d.courses.filter((x) => x !== c); save(d); return { ok: true }; }
     if (sub === "/cards" && method === "POST") { const r = addContent(c, b.cards, b.questions, day); save(d); return r; }
+    if (sub === "/delete-cards" && method === "POST") {
+      const ids = new Set((b.ids || []).map(String));
+      c.cards = c.cards.filter((k) => !ids.has(k.id));
+      for (const id of ids) delete c.progress[id];
+      const topics = new Set(c.cards.map((k) => k.topic || ""));
+      c.questions = c.questions.filter((q) => topics.has(q.topic || ""));
+      c.missed = mergeMissed(c.missed, [], [...ids]);
+      save(d); return { ok: true, deleted: ids.size };
+    }
     if (sub === "/missed" && method === "POST") {
       const ids = new Set(c.cards.map((k) => k.id));
       c.missed = mergeMissed(c.missed, (b.add || []).filter((x) => ids.has(String(x))), b.remove).filter((x) => ids.has(x));

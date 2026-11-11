@@ -430,6 +430,21 @@ async function api(req, env, url) {
         .concat(env.DB.prepare("DELETE FROM courses WHERE id = ?").bind(course.id)));
       return json({ ok: true });
     }
+    if (sub === "/delete-cards" && method === "POST") {
+      // Delete a lesson (or everything from one upload) that was added by accident: its words, your progress on them,
+      // and practice-exam questions for topics that no longer have any words.
+      const b = await readBody(req);
+      const ids = (Array.isArray(b.ids) ? b.ids : []).map(String).slice(0, 500);
+      if (!ids.length) return json({ error: "Nothing to delete." }, 400);
+      const ph = ids.map(() => "?").join(",");
+      await env.DB.batch([
+        env.DB.prepare(`DELETE FROM progress WHERE course_id = ? AND card_id IN (${ph})`).bind(course.id, ...ids),
+        env.DB.prepare(`DELETE FROM cards WHERE course_id = ? AND id IN (${ph})`).bind(course.id, ...ids),
+        env.DB.prepare("DELETE FROM questions WHERE course_id = ? AND COALESCE(topic, '') NOT IN (SELECT COALESCE(topic, '') FROM cards WHERE course_id = ?)").bind(course.id, course.id),
+        env.DB.prepare("UPDATE courses SET missed = ? WHERE id = ?").bind(JSON.stringify(mergeMissed(course.missed, [], ids)), course.id),
+      ]);
+      return json({ ok: true, deleted: ids.length });
+    }
     if (sub === "/missed" && method === "POST") {
       // Words you got wrong in this subject (cram, speed round, practice exam). Merged here so two devices don't overwrite each other.
       const b = await readBody(req), ids = new Set((await env.DB.prepare("SELECT id FROM cards WHERE course_id = ?").bind(course.id).all()).results.map((r) => r.id));

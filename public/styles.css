@@ -420,3 +420,6 @@ details summary{list-style:revert}
 .cchip.done{opacity:.7} .cchip.done b{color:var(--good)}
 .btn-sub{display:block;font-size:12px;font-weight:600;opacity:.75;margin-top:2px}
 .o-tricky .no-icon{background:var(--rev-soft)}
+.chk.dellesson{color:var(--bad);border-color:var(--bad)}
+.lesson .chk.dellesson{margin-left:-4px;opacity:.75;font-size:15px}
+.lesson .chk.dellesson:hover{opacity:1}

@@ -1058,13 +1058,15 @@ route(/^\/c\/([\w-]+)$/, async (id) => {
         </div>
       </div>
       <h3>Lessons</h3>
+      <p class="muted small" style="margin-top:-6px">✓ marks a lesson you already know. 🗑 deletes a lesson added by accident. Your plan re-adjusts either way.</p>
       ${d.lessons.map((l, i) => {
         const newBatch = batches > 1 && (i === 0 || d.lessons[i - 1].batch !== l.batch);
-        return `${newBatch ? `<div class="kicker" style="color:var(--muted);margin-top:4px">Added ${niceDate(l.batch)}</div>` : ""}
+        return `${newBatch ? `<div class="spread" style="margin-top:4px"><div class="kicker" style="color:var(--muted)">Added ${niceDate(l.batch)}</div><button class="btn ghost small danger delbatch" data-b="${esc(l.batch)}">Delete all from this day</button></div>` : ""}
         <div class="lesson ${lessonDone(d, l) ? "done" : ""} ${l === nextL ? "next" : ""}">
           <span class="num">${lessonDone(d, l) ? "✓" : l.n}</span>
           <button class="go" data-n="${l.n}"><b>${esc(l.topic)}${l.part ? ` <span class="muted" style="display:inline;font-weight:400">part ${l.part}</span>` : ""}</b><span>${l.cards.map((k) => esc(k.term)).join(" · ")}</span></button>
           <button class="chk" role="checkbox" aria-checked="${lessonDone(d, l)}" aria-label="Mark lesson ${l.n} as already studied" data-n="${l.n}">✓</button>
+          <button class="chk dellesson" aria-label="Delete lesson ${l.n}" data-n="${l.n}">🗑</button>
         </div>`;
       }).join("")}
       <div class="card stack" style="margin-top:8px">
@@ -1082,8 +1084,29 @@ route(/^\/c\/([\w-]+)$/, async (id) => {
       try { await api(`/courses/${id}`, { method: "PATCH", body: { notes_done: 1 } }); c.notes_done = 1; await loadMe(); toast("Got it. Your plan now uses just what you have."); draw(); } catch (e) { toast(e.message); }
     };
     $("c-mark").onclick = () => markSheet(d, draw);
+    // Delete a lesson (or a whole upload) added by accident.
+    const delWords = (cards, what) => {
+      const done = cards.filter((k) => isLearned(d, k)).length;
+      const el = sheet(`<h2>Delete ${what}?</h2>
+        <p>These ${plural(cards.length, "word")} will be removed from ${esc(c.name)}${done ? `, along with your progress on ${done} of them` : ""}. This can't be undone.</p>
+        <p class="muted small">${cards.slice(0, 12).map((k) => esc(k.term)).join(" · ")}${cards.length > 12 ? " …" : ""}</p>
+        <button class="btn danger block" id="dl-yes">Delete ${plural(cards.length, "word")}</button>
+        <button class="btn ghost block" id="dl-no">Cancel</button>`);
+      el.querySelector("#dl-no").onclick = () => el.remove();
+      el.querySelector("#dl-yes").onclick = async () => {
+        el.remove();
+        try {
+          await api(`/courses/${id}/delete-cards`, { method: "POST", body: { ids: cards.map((k) => k.id) } });
+          delete courseCache[id]; await loadMe(true).catch(() => {});
+          toast(`Deleted ${plural(cards.length, "word")}`);
+          render();
+        } catch (e) { toast(e.message); }
+      };
+    };
+    app.querySelectorAll(".dellesson").forEach((b) => (b.onclick = () => { const l = d.lessons.find((x) => x.n === +b.dataset.n); delWords(l.cards, `Lesson ${l.n} · ${l.topic}`); }));
+    app.querySelectorAll(".delbatch").forEach((b) => (b.onclick = () => delWords(d.cards.filter((k) => k.added_day === b.dataset.b), `everything added ${niceDate(b.dataset.b)}`)));
     app.querySelectorAll(".lesson .go").forEach((b) => (b.onclick = () => go(`/s/${id}/lesson/${b.dataset.n}`)));
-    app.querySelectorAll(".chk").forEach((b) => (b.onclick = async () => {
+    app.querySelectorAll(".chk:not(.dellesson)").forEach((b) => (b.onclick = async () => {
       const l = d.lessons[b.dataset.n - 1];
       try { await setKnown(d, l.cards, !lessonDone(d, l)); } catch (e) { toast(e.message); }
       draw();
