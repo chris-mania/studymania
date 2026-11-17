@@ -1623,7 +1623,15 @@ route(/^\/cram\/([\w-]+)\/(rapid|speed|missed|tricky|new)$/, async (id, mode) =>
   const roundWords = new Set(queue.map((x) => x.k.id)).size;
   const wordsDone = () => staged ? [...new Set(queue.map((x) => x.k.id))].filter((id) => S.lastOk[id] === true || (S.tries[id] || 0) > 4).length : Math.min(S.i, queue.length);
   const wordsLeft = () => Math.max(0, roundWords - wordsDone());
-  const pctDone = () => Math.round((wordsDone() / Math.max(1, roundWords)) * 100);
+  // Drills: every right answer moves the bar (3 steps per word, the bonus true/false included). A wrong answer
+  // doesn't move it, and it never goes backward even though that word has to start over.
+  S.stage = {}; S.held = 0;
+  const stepsLeft = () => [...new Set(queue.map((x) => x.k.id))].reduce((a, id) => a + ((S.tries[id] || 0) > 4 ? 0 : 4 - (S.stage[id] || 1)), 0);
+  const pctDone = () => {
+    if (!staged) return Math.round((wordsDone() / Math.max(1, roundWords)) * 100);
+    const right = S.rightSteps || 0, now = Math.round((right / Math.max(1, right + stepsLeft())) * 100);
+    return (S.held = Math.max(S.held, now));
+  };
   const progressBits = () => `<div class="bar"><i style="width:${pctDone()}%"></i></div>
       <button type="button" class="combo pctbtn" id="cnum" aria-label="${plural(wordsLeft(), "word")} left">${pctDone()}%</button>`;
   const wireTop = () => {
@@ -1714,6 +1722,7 @@ route(/^\/cram\/([\w-]+)\/(rapid|speed|missed|tricky|new)$/, async (id, mode) =>
     app.querySelectorAll(".opt").forEach((x) => { if (q.opts[x.dataset.j] === q.ans) x.classList.add("right"); else if (x !== btn) x.classList.add("dim"); x.disabled = true; });
     if (btn && !ok) btn.classList.add("wrong");
     // Staged drills: a word only counts as known after its final true/false. A miss anywhere starts it over.
+    if (staged) { if (ok) { S.stage[k.id] = it.st + 1; S.rightSteps = (S.rightSteps || 0) + 1; } else S.stage[k.id] = 1; }
     if (!staged) S.lastOk[k.id] = ok;
     else if (!ok) S.lastOk[k.id] = false;
     else if (it.st === 1) queue.splice(Math.min(S.i + 4, queue.length), 0, { k, st: 2 }); // second question a few words later
