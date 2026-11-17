@@ -1259,9 +1259,10 @@ function pairClue(k, p, fresh, want) {
   const pick = (want && pool.find((x) => x[0] === want)) || (fresh ? pool[0] : pool[(Math.random() * pool.length) | 0]);
   return { kind: pick[0], text: maskNames(pick[1], k) };
 }
-function pairQ(d, k, want) {
+function pairQ(d, k, want, force) {
   const parts = k.parts.filter((p) => p.term && (p.scenario || p.example || p.simple));
-  const i = (PAIR_TURN[k.id] = ((PAIR_TURN[k.id] ?? (Math.random() * parts.length) | 0) + 1) % parts.length);
+  // `force` picks which term to test (drills test every term of an "A vs B" card); otherwise rotate.
+  const i = force != null ? force % parts.length : (PAIR_TURN[k.id] = ((PAIR_TURN[k.id] ?? (Math.random() * parts.length) | 0) + 1) % parts.length);
   const p = parts[i], c = pairClue(k, p, false, want);
   const names = parts.map((x) => x.term);
   // A 4th choice from the same topic you've already learned, so it's not a pure 50/50.
@@ -1601,9 +1602,10 @@ route(/^\/cram\/([\w-]+)\/(rapid|speed|missed|tricky|new)$/, async (id, mode) =>
   let queue = pool.slice(0, ROUND === Infinity ? pool.length : ROUND).map((k) => ({ k, st: staged ? 1 : 0 })), timer = null;
   const ask = (it) => {
     const k = it.k;
-    if (it.st === 1) return isPair(k) ? pairQ(d, k) : meaningQ(d, k);
-    if (it.st === 2) return isPair(k) ? pairQ(d, k, "meaning") : termQ(d, k);
-    if (it.st === 3) return isPair(k) ? pairQ(d, k) : tfQ(d, k);
+    // "A vs B" cards: question 1 tests A, question 2 tests B, the last one tests C (or A again if there are only 2).
+    if (it.st === 1) return isPair(k) ? pairQ(d, k, undefined, 0) : meaningQ(d, k);
+    if (it.st === 2) return isPair(k) ? pairQ(d, k, "meaning", 1) : termQ(d, k);
+    if (it.st === 3) return isPair(k) ? pairQ(d, k, undefined, 2) : tfQ(d, k);
     return isPair(k) ? pairQ(d, k) : [meaningQ, termQ, tfQ][(Math.random() * 3) | 0](d, k);
   };
   const stageNote = (it) => (it.st === 1 ? (S.tries[it.k.id] ? "starting over" : "check") : it.st === 2 ? "one more time" : it.st === 3 ? "final check: true or false" : "");
