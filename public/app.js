@@ -1182,6 +1182,11 @@ function markSheet(d, after, first) {
 }
 
 // ---------- questions ----------
+// "See the card": read the whole word again after a miss (Study & Cram and reviews).
+function cardSheet(k) {
+  const el = sheet(`${cardView(k)}<button class="btn primary block" id="cs-ok" style="margin-top:12px">Got it</button>`);
+  el.querySelector("#cs-ok").onclick = () => el.remove();
+}
 function cardView(k) {
   const pair = k.parts?.length >= 2;
   return `<div class="qbody">
@@ -1344,6 +1349,7 @@ route(/^\/s\/([\w-]+)\/(next|review|quiz|lesson|misses)(?:\/(\d+))?$/, async (id
       try { await postStudy({ course_id: id, kind: mode === "learn" ? "lesson" : "review", results: list.map(({ tb, ...r }) => r), xp, counts }); markSent(list); S.xpSent = S.xp; if (counts) S.counted = true; } catch (e) { toast(e.message); }
     }
     persist();
+    saveMissed(d, S.missed, []); // anything you missed so far goes on your missed words, even if you stop early
     await loadMe().catch(() => {});
     toast(counts ? "Saved. That counts for today's streak ✓" : mode === "learn" ? "Saved. Pick up where you left off anytime." : "Saved what you answered.");
     go(`/c/${id}`);
@@ -1427,7 +1433,9 @@ route(/^\/s\/([\w-]+)\/(next|review|quiz|lesson|misses)(?:\/(\d+))?$/, async (id
     const praise = S.combo >= 5 ? `${S.combo} in a row!` : ["Nice!", "Correct!", "You got it!", "Yes!"][(Math.random() * 4) | 0];
     $("fb").innerHTML = `<div class="feedback ${ok ? "ok" : "no"}"><h3>${ok ? praise : idk ? "No problem. Here it is" : "Not quite"}</h3>
       ${ok ? (k.hook ? `<p class="small">${esc(k.hook)}</p>` : "") : `${isPair(k) ? k.parts.map((p) => `<p class="small"><b>${esc(p.term)}</b>: ${esc(p.simple)}</p>`).join("") : `<p><b>${esc(k.term)}</b>: ${esc(k.simple)}</p>`}${k.confuse ? `<p class="small">${esc(k.confuse)}</p>` : ""}<p class="small muted">It'll come back in a moment.</p>`}
+      ${!ok && mode !== "learn" ? `<button class="btn ghost block" id="seecard">📖 See the card</button>` : ""}
       <button class="btn ${ok ? "good" : "bad"} block" id="cont">Continue</button></div>`;
+    if ($("seecard")) $("seecard").onclick = () => cardSheet(k);
     // The panel is pinned to the bottom of the screen, so nothing scrolls. Leave room under the answers for it.
     const c = $("cont"), fb = app.querySelector(".feedback"); c.focus({ preventScroll: true });
     app.querySelector(".sess").style.paddingBottom = fb.offsetHeight + 16 + "px";
@@ -1568,14 +1576,26 @@ route(/^\/cram\/([\w-]+)\/(rapid|speed|missed|tricky)$/, async (id, mode) => {
   if (!pool.length) { toast(mode === "missed" ? "No missed words in this subject. Nice." : mode === "tricky" ? "No tricky words yet. Nice." : "This subject has no words yet."); return go(`/c/${id}`); }
   const ROUND = mode === "rapid" ? Math.min(25, pool.length) : mode === "missed" || mode === "tricky" ? Math.min(30, pool.length) : Infinity;
   const SECS = 60, title = { rapid: "⚡ Rapid fire", speed: "⏱ Speed round", missed: "🎯 Missed words", tricky: "🧠 Tricky words" }[mode];
-  const S = { i: 0, right: 0, asked: 0, combo: 0, best: 0, xp: 0, wrong: new Set(), fixed: new Set(), again: new Set(), over: false, t0: 0, saved: false };
+  const S = { i: 0, right: 0, asked: 0, combo: 0, best: 0, xp: 0, wrong: new Set(), fixed: new Set(), again: new Set(), over: false, t0: 0, saved: false, cardSeen: {}, tries: {}, lastOk: {} };
   let queue = pool.slice(0, ROUND === Infinity ? pool.length : ROUND), timer = null;
   const ask = (k) => (isPair(k) ? pairQ(d, k) : [meaningQ, termQ, tfQ][(Math.random() * 3) | 0](d, k));
 
   function draw() {
     if (S.over) return;
     if (S.i >= queue.length) { if (mode === "speed") { queue = queue.concat(shuffle([...pool])); } else return finish(); }
-    const k = queue[S.i], q = ask(k);
+    const k = queue[S.i];
+    // Missed-words drill: read the card first, then answer.
+    if (mode === "missed" && !S.cardSeen[S.i]) {
+      app.innerHTML = `<div class="sess"><div class="sesstop"><button class="iconbtn" id="x" aria-label="Stop">✕</button>
+        <div class="bar"><i style="width:${(S.i / queue.length) * 100}%"></i></div><span class="combo">${S.i + 1}/${queue.length}</span></div>
+        ${classTag(d.course)}<div class="kicker">${title} · ${S.tries[k.id] ? "one more look" : "read it, then answer"}</div>
+        ${cardView(k)}<div class="footbtn"><button class="btn primary block" id="n">Test me</button></div></div>`;
+      window.scrollTo(0, 0);
+      $("x").onclick = () => finish(true);
+      $("n").onclick = () => { S.cardSeen[S.i] = true; draw(); };
+      return;
+    }
+    const q = ask(k);
     const left = mode === "speed" ? Math.max(0, SECS - Math.floor((Date.now() - S.t0) / 1000)) : 0;
     const pct = mode === "speed" ? (left / SECS) * 100 : (S.i / queue.length) * 100;
     app.innerHTML = `<div class="sess"><div class="sesstop"><button class="iconbtn" id="x" aria-label="Stop">✕</button>
@@ -1597,18 +1617,22 @@ route(/^\/cram\/([\w-]+)\/(rapid|speed|missed|tricky)$/, async (id, mode) => {
     S.asked++;
     app.querySelectorAll(".opt").forEach((x) => { if (q.opts[x.dataset.j] === q.ans) x.classList.add("right"); else if (x !== btn) x.classList.add("dim"); x.disabled = true; });
     if (btn && !ok) btn.classList.add("wrong");
+    S.lastOk[k.id] = ok;
     if (ok) { S.right++; S.combo++; S.best = Math.max(S.best, S.combo); S.xp += mode === "speed" ? 3 : 5; chime("good"); buzz(10); if (!S.wrong.has(k.id)) S.fixed.add(k.id); }
     else {
       S.combo = 0; S.wrong.add(k.id); S.fixed.delete(k.id); if (btn) { chime("bad"); buzz([30, 40, 30]); }
-      // Missed-words drill: a miss comes back once more at the end.
-      if (mode === "missed" && !S.again.has(k.id)) { S.again.add(k.id); queue.push(k); }
+      // Missed-words drill: a miss comes back (card first) until you get it right, up to 4 more times.
+      S.tries[k.id] = (S.tries[k.id] || 0) + 1;
+      if (mode === "missed" && S.tries[k.id] <= 4) queue.push(k);
     }
     const nextQ = () => { S.i++; draw(); };
     if (mode === "speed") return setTimeout(nextQ, ok ? 250 : 900);
     if (ok) return setTimeout(nextQ, 550);
     const parts = isPair(k) ? k.parts.map((p) => `<p class="small"><b>${esc(p.term)}</b>: ${esc(p.simple)}</p>`).join("") : `<p><b>${esc(k.term)}</b>: ${esc(k.simple)}</p>`;
     $("fb").innerHTML = `<div class="feedback no"><h3>${btn ? "Not quite" : "Here it is"}</h3>${parts}${k.confuse ? `<p class="small">${esc(k.confuse)}</p>` : ""}
-      <p class="small muted">${mode === "missed" ? "It'll come back once more." : "Saved to your missed words."}</p><button class="btn bad block" id="cont">Next</button></div>`;
+      <p class="small muted">${mode === "missed" ? (S.tries[k.id] <= 4 ? "You'll see the card again, then it comes back until you get it." : "Still on your missed list. We'll keep drilling it next time.") : "Saved to your missed words."}</p>
+      <button class="btn ghost block" id="seecard">📖 See the card</button><button class="btn bad block" id="cont">Next</button></div>`;
+    $("seecard").onclick = () => cardSheet(k);
     const fb = app.querySelector(".feedback"); app.querySelector(".sess").style.paddingBottom = fb.offsetHeight + 16 + "px";
     $("cont").focus({ preventScroll: true }); $("cont").onclick = nextQ;
   }
@@ -1616,8 +1640,11 @@ route(/^\/cram\/([\w-]+)\/(rapid|speed|missed|tricky)$/, async (id, mode) => {
     if (S.over) return; S.over = true; clearInterval(timer);
     if (!S.asked) return go(`/c/${id}`);
     // Got it right (and never wrong this round) → off the list. Wrong → on the list.
-    const fixed = [...S.fixed].filter((x) => missed0.includes(x));
-    await saveMissed(d, [...S.wrong], fixed);
+    let fixed = [...S.fixed].filter((x) => missed0.includes(x)), stillWrong = [...S.wrong];
+    // Missed-words drill: a word you finally got right (after seeing its card again) comes off the list.
+    // It stays "tricky" for good, so it still comes back more often in reviews.
+    if (mode === "missed") { fixed = Object.keys(S.lastOk).filter((x) => S.lastOk[x]); stillWrong = Object.keys(S.lastOk).filter((x) => !S.lastOk[x]); }
+    await saveMissed(d, stillWrong, fixed);
     let newBest = false;
     if (mode === "speed") { const prev = store.get("sm-speed-" + id, 0); if (S.right > prev) { store.set("sm-speed-" + id, S.right); newBest = prev > 0; } }
     // Words you already learned and missed come up in reviews sooner. Right answers don't change your schedule.
@@ -1627,7 +1654,7 @@ route(/^\/cram\/([\w-]+)\/(rapid|speed|missed|tricky)$/, async (id, mode) => {
     app.innerHTML = `<div class="sess"><div class="cele">
       <div class="big-emoji">${newBest ? "🏆" : mode === "speed" ? "⏱" : acc >= 80 ? "🎯" : "💪"}</div>
       <h1>${mode === "speed" ? (newBest ? `New best: ${S.right}!` : `${S.right} right in ${SECS} seconds`) : `${S.right} of ${S.asked} right`}</h1>
-      <p class="muted">${mode === "speed" ? `Best: ${store.get("sm-speed-" + id, 0)}. ` : ""}${S.wrong.size ? `${plural(S.wrong.size, "word")} saved to your missed words. ` : "Nothing missed. "}${fixed.length ? `${plural(fixed.length, "word")} fixed and taken off the list.` : ""}</p>
+      <p class="muted">${mode === "speed" ? `Best: ${store.get("sm-speed-" + id, 0)}. ` : ""}${stillWrong.length ? `${plural(stillWrong.length, "word")} ${mode === "missed" ? "still on" : "saved to"} your missed words. ` : "Nothing missed. "}${fixed.length ? `${plural(fixed.length, "word")} fixed and taken off the list.` : ""}</p>
       <div class="tiles"><div class="tile xp"><b>${S.xp}</b><span>XP</span></div><div class="tile acc"><b>${acc}%</b><span>Correct</span></div><div class="tile fl"><b>${nowMissed}</b><span>Missed list</span></div></div>
       </div><div class="footbtn stack">
         ${nowMissed ? `<a class="btn primary block" href="#/cram/${id}/missed" id="again-missed">Drill my ${plural(nowMissed, "missed word")}</a>` : ""}
