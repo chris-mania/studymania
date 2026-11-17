@@ -33,6 +33,7 @@ CARD FIELDS (keep every card as complete as the first one)
 - "confuse": one line on what it's mixed up with and how to tell them apart, or "".
 - "related": 2-4 other terms from these cards, using their exact "term" text.
 - "formula": the formula, or "".
+- "scenario": a NEW short exam-style situation that shows this idea without naming it, like "Sally keeps buying the same toothpaste without thinking about it." Different from "example", 1-2 sentences, never uses the term's name. The app asks "What is this an example of?" with it. Use "" for formulas or if there's no real-life version.
 - "question": usually "". Only for a sequence or "which is NOT" item: the exact question to ask, with "answer" as the right choice.
 
 EXAM QUESTIONS
@@ -47,7 +48,7 @@ HOW TO SEND IT
   "part": 1, "parts_total": 1, "cards_total": 0,
   "source": {"type": "slides", "total": 0, "sections": [], "unreadable": []},
   "cards": [
-    {"n":1,"from":"","topic":"","term":"","full":"","definition":"","simple":"","example":"","hook":"","answer":"","traps":["","",""],"confuse":"","related":[],"formula":"","question":"","parts":[]}
+    {"n":1,"from":"","topic":"","term":"","full":"","definition":"","simple":"","example":"","scenario":"","hook":"","answer":"","traps":["","",""],"confuse":"","related":[],"formula":"","question":"","parts":[]}
   ],
   "questions": [
     {"topic":"","question":"","choices":["","","",""],"answer":"","why":""}

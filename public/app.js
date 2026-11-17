@@ -1236,6 +1236,15 @@ function safeTraps(d, k) {
 function meaningQ(d, k) {
   return { k, topic: k.topic, html: k.question ? esc(k.question) : `What does <b>${esc(k.term)}</b> mean?${k.full ? `<span class="sub">${esc(k.full)}</span>` : ""}`, opts: shuffle([k.answer, ...safeTraps(d, k)]), ans: k.answer };
 }
+// "Sally does ___. What is this an example of?" Uses the card's fresh scenario (or its example), with the word's name hidden.
+const hasExample = (k) => !isPair(k) && !!(k.scenario || k.example) && !k.formula;
+function exampleQ(d, k) {
+  const others = siblings(d, k, 3, "term");
+  if (others.length < 1 || !hasExample(k)) return termQ(d, k);
+  const names = [k.term, k.full].filter(Boolean).map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const text = String(k.scenario || k.example).replace(new RegExp(`\\b(${names.join("|")})\\b`, "gi"), "____");
+  return { k, topic: k.topic, html: `What is this an example of?<span class="sub">${esc(text)}</span>`, opts: shuffle([k.term, ...others]), ans: k.term };
+}
 function termQ(d, k) {
   if (k.question) return meaningQ(d, k);
   const others = siblings(d, k, 3, "term");
@@ -1382,7 +1391,8 @@ route(/^\/s\/([\w-]+)\/(next|review|quiz|lesson|misses)(?:\/(\d+))?$/, async (id
     const q = isPair(st.k)
       ? (st.t === "check" && !st.retry ? matchQ(d, st.k) : pairQ(d, st.k, st.def ? "meaning" : undefined))
       : st.def ? (st.t === "check" ? termQ(d, st.k) : meaningQ(d, st.k))
-      : st.t === "check" ? meaningQ(d, st.k) : termQ(d, st.k);
+      : st.t === "check" ? meaningQ(d, st.k)
+      : hasExample(st.k) && (st.k.scenario || Math.random() < 0.5) ? exampleQ(d, st.k) : termQ(d, st.k);
     const label = st.tb ? `Throwback · from Lesson ${lessonOf[st.k.id]}` : mode === "learn" ? (st.t === "check" ? "Quick check" : "Recap") : kind === "review" ? `🔁 Review · from Lesson ${lessonOf[st.k.id]}` : kind === "misses" ? "Fix your misses" : "Practice";
     if (q.match) return showMatch(q, st, label);
     frame(`<div class="qbody"><p class="prompt">${q.html}</p>
@@ -1604,9 +1614,9 @@ route(/^\/cram\/([\w-]+)\/(rapid|speed|missed|tricky|new)$/, async (id, mode) =>
     const k = it.k;
     // "A vs B" cards: question 1 tests A, question 2 tests B, the last one tests C (or A again if there are only 2).
     if (it.st === 1) return isPair(k) ? pairQ(d, k, undefined, 0) : meaningQ(d, k);
-    if (it.st === 2) return isPair(k) ? pairQ(d, k, "meaning", 1) : termQ(d, k);
+    if (it.st === 2) return isPair(k) ? pairQ(d, k, "meaning", 1) : hasExample(k) ? exampleQ(d, k) : termQ(d, k);
     if (it.st === 3) return isPair(k) ? pairQ(d, k, undefined, 2) : tfQ(d, k);
-    return isPair(k) ? pairQ(d, k) : [meaningQ, termQ, tfQ][(Math.random() * 3) | 0](d, k);
+    return isPair(k) ? pairQ(d, k) : [meaningQ, termQ, tfQ, exampleQ][(Math.random() * 4) | 0](d, k);
   };
   const stageNote = (it) => (it.st === 1 ? (S.tries[it.k.id] ? "starting over" : "check") : it.st === 2 ? "one more time" : it.st === 3 ? "final check: true or false" : "");
 
@@ -1750,7 +1760,7 @@ route(/^\/exam\/([\w-]+)$/, async (id) => {
     const n = Math.min(S.count, p.cards.length + p.qs.length);
     const ai = shuffle([...p.qs]).slice(0, Math.min(p.qs.length, Math.ceil(n * 0.5))).map(aiQ);
     d.seen = S.from === "all" ? null : new Set(d.cards.filter((k) => isLearned(d, k)).map((k) => k.id));
-    const cardQs = shuffle([...p.cards]).slice(0, n - ai.length).map((k, j) => (isPair(k) ? pairQ(d, k) : [meaningQ, termQ, tfQ][j % 3](d, k)));
+    const cardQs = shuffle([...p.cards]).slice(0, n - ai.length).map((k, j) => (isPair(k) ? pairQ(d, k) : [meaningQ, exampleQ, termQ, tfQ][j % 4](d, k)));
     const qs = shuffle(ai.concat(cardQs)), answers = new Array(qs.length).fill(null);
     const endAt = S.timer ? Date.now() + qs.length * 60e3 : 0;
     let i = 0, timerId = null;

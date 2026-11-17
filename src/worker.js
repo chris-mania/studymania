@@ -109,15 +109,15 @@ async function insertContent(env, courseId, userId, rawCards, rawQuestions, day)
     .slice(0, Math.max(0, room));
   const qs = (Array.isArray(rawQuestions) ? rawQuestions : []).map((r) => keepDay(r, cleanQuestion(r))).filter(Boolean).slice(0, 400);
   const cardStmt = env.DB.prepare(
-    `INSERT INTO cards (id, course_id, user_id, ord, added_day, topic, term, full, definition, simple, hook, example, answer, traps, confuse, related, formula, question, parts)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    `INSERT INTO cards (id, course_id, user_id, ord, added_day, topic, term, full, definition, simple, hook, example, answer, traps, confuse, related, formula, question, parts, scenario)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
   const qStart = await env.DB.prepare("SELECT COALESCE(MAX(ord), -1) + 1 AS n FROM questions WHERE course_id = ?").bind(courseId).first();
   const qStmt = env.DB.prepare("INSERT INTO questions (id, course_id, user_id, ord, added_day, topic, q, choices, answer, why) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
   const ids = [];
   const stmts = cards.map((c, i) => {
     const id = crypto.randomUUID(); ids.push(id);
     return cardStmt.bind(id, courseId, userId, start.n + i, c.added_day || day, c.topic, c.term, c.full, c.definition, c.simple, c.hook, c.example,
-      c.answer, JSON.stringify(c.traps), c.confuse, JSON.stringify(c.related), c.formula, c.question, c.parts?.length ? JSON.stringify(c.parts) : null);
+      c.answer, JSON.stringify(c.traps), c.confuse, JSON.stringify(c.related), c.formula, c.question, c.parts?.length ? JSON.stringify(c.parts) : null, c.scenario || null);
   }).concat(qs.map((q, i) => qStmt.bind(crypto.randomUUID(), courseId, userId, qStart.n + i, q.added_day || day, q.topic, q.q, JSON.stringify(q.choices), q.answer, q.why)));
   await runBatch(env, stmts);
   return { added: cards.length, skipped, questions: qs.length, ids };

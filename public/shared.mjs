@@ -244,7 +244,7 @@ export function cleanCard(c) {
     topic: str(c.topic, 80) || "General", term, full: str(c.full, 160), definition: str(c.definition, 700), simple,
     hook: str(c.hook, 400), example: str(c.example, 700), answer: str(c.answer, 500) || simple,
     traps: arr(c.traps, 3, 500), confuse: str(c.confuse, 400), related: arr(c.related, 6, 100),
-    formula: str(c.formula, 240), question: str(c.question, 300),
+    formula: str(c.formula, 240), question: str(c.question, 300), scenario: str(c.scenario, 500),
     // "pair" card: 2-3 small look-alike terms learned together
     parts: Array.isArray(c.parts) ? c.parts.filter((p) => p && p.term).slice(0, 3).map((p) => ({ term: str(p.term, 100), simple: str(p.simple || p.definition, 300), example: str(p.example, 400), scenario: str(p.scenario, 400) })) : [],
   };

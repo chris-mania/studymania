@@ -74,7 +74,8 @@ CREATE TABLE IF NOT EXISTS cards (
   related TEXT,                          -- JSON array
   formula TEXT,
   question TEXT,
-  parts TEXT                             -- JSON: pair cards (2-3 small look-alike terms in one card)
+  parts TEXT,                            -- JSON: pair cards (2-3 small look-alike terms in one card)
+  scenario TEXT                          -- a fresh "Sally does ___" situation for "What is this an example of?" questions
 );
 CREATE INDEX IF NOT EXISTS idx_cards_course ON cards(course_id, ord);
 CREATE INDEX IF NOT EXISTS idx_cards_user ON cards(user_id);
