@@ -1058,7 +1058,7 @@ route(/^\/c\/([\w-]+)$/, async (id) => {
         </div>
       </div>
       <h3>Lessons</h3>
-      <p class="muted small" style="margin-top:-6px">✓ marks a lesson you already know. 🗑 deletes a lesson added by accident. Your plan re-adjusts either way.</p>
+      <p class="muted small" style="margin-top:-6px"><b>✓</b> marks a lesson you already know. <b>✎ Edit</b> opens a lesson's words so you can remove any you don't need (nothing is deleted until you choose). Your plan re-adjusts either way.</p>
       ${d.lessons.map((l, i) => {
         const newBatch = batches > 1 && (i === 0 || d.lessons[i - 1].batch !== l.batch);
         return `${newBatch ? `<div class="spread" style="margin-top:4px"><div class="kicker" style="color:var(--muted)">Added ${niceDate(l.batch)}</div><button class="btn ghost small danger delbatch" data-b="${esc(l.batch)}">Delete all from this day</button></div>` : ""}
@@ -1066,7 +1066,7 @@ route(/^\/c\/([\w-]+)$/, async (id) => {
           <span class="num">${lessonDone(d, l) ? "✓" : l.n}</span>
           <button class="go" data-n="${l.n}"><b>${esc(l.topic)}${l.part ? ` <span class="muted" style="display:inline;font-weight:400">part ${l.part}</span>` : ""}</b><span>${l.cards.map((k) => esc(k.term)).join(" · ")}</span></button>
           <button class="chk" role="checkbox" aria-checked="${lessonDone(d, l)}" aria-label="Mark lesson ${l.n} as already studied" data-n="${l.n}">✓</button>
-          <button class="chk dellesson" aria-label="Delete lesson ${l.n}" data-n="${l.n}">🗑</button>
+          <button class="editlesson dellesson" aria-label="Edit lesson ${l.n}: see its words and remove any" data-n="${l.n}">✎ Edit</button>
         </div>`;
       }).join("")}
       <div class="card stack" style="margin-top:8px">
@@ -1085,26 +1085,36 @@ route(/^\/c\/([\w-]+)$/, async (id) => {
     };
     $("c-mark").onclick = () => markSheet(d, draw);
     // Delete a lesson (or a whole upload) added by accident.
-    const delWords = (cards, what) => {
-      const done = cards.filter((k) => isLearned(d, k)).length;
-      const el = sheet(`<h2>Delete ${what}?</h2>
-        <p>These ${plural(cards.length, "word")} will be removed from ${esc(c.name)}${done ? `, along with your progress on ${done} of them` : ""}. This can't be undone.</p>
-        <p class="muted small">${cards.slice(0, 12).map((k) => esc(k.term)).join(" · ")}${cards.length > 12 ? " …" : ""}</p>
-        <button class="btn danger block" id="dl-yes">Delete ${plural(cards.length, "word")}</button>
-        <button class="btn ghost block" id="dl-no">Cancel</button>`);
-      el.querySelector("#dl-no").onclick = () => el.remove();
-      el.querySelector("#dl-yes").onclick = async () => {
+    // Delete words added by accident: tick single words, or delete the whole lesson / upload at once.
+    const delWords = (cards, what, allLabel = "Delete all of it") => {
+      const el = sheet(`<h2>${what}</h2>
+        <p class="muted small">Tick any words you don't want, then tap Remove. The rest of the lesson stays. Removed words (and your progress on them) can't be brought back.</p>
+        <div class="delpick">${cards.map((k) => `<label class="delrow"><input type="checkbox" value="${esc(k.id)}"><span><b>${esc(k.term)}</b>${k.simple ? `<span class="muted small">${esc(k.simple)}</span>` : ""}</span>${isLearned(d, k) ? `<span class="pill">learned</span>` : ""}</label>`).join("")}</div>
+        <button class="btn danger block" id="dl-some" disabled>Remove selected words</button>
+        <button class="btn ghost block" id="dl-no">Done</button>
+        <div class="delall"><span class="muted small">Added this by accident?</span><button class="btn ghost small danger" id="dl-all">${allLabel}</button></div>`);
+      const boxes = [...el.querySelectorAll(".delpick input")];
+      const some = el.querySelector("#dl-some");
+      boxes.forEach((x) => (x.onchange = () => { const n = boxes.filter((y) => y.checked).length; some.disabled = !n; some.textContent = n ? `Remove ${plural(n, "word")}` : "Remove selected words"; }));
+      const run = async (ids) => {
         el.remove();
         try {
-          await api(`/courses/${id}/delete-cards`, { method: "POST", body: { ids: cards.map((k) => k.id) } });
+          await api(`/courses/${id}/delete-cards`, { method: "POST", body: { ids } });
           delete courseCache[id]; await loadMe(true).catch(() => {});
-          toast(`Deleted ${plural(cards.length, "word")}`);
+          toast(`Deleted ${plural(ids.length, "word")}`);
           render();
         } catch (e) { toast(e.message); }
       };
+      el.querySelector("#dl-no").onclick = () => el.remove();
+      some.onclick = () => run(boxes.filter((y) => y.checked).map((y) => y.value));
+      el.querySelector("#dl-all").onclick = () => {
+        const btn = el.querySelector("#dl-all");
+        if (btn.dataset.sure) return run(cards.map((k) => k.id));
+        btn.dataset.sure = "1"; btn.textContent = `Tap again: ${allLabel.toLowerCase()} (${plural(cards.length, "word")})`;
+      };
     };
-    app.querySelectorAll(".dellesson").forEach((b) => (b.onclick = () => { const l = d.lessons.find((x) => x.n === +b.dataset.n); delWords(l.cards, `Lesson ${l.n} · ${l.topic}`); }));
-    app.querySelectorAll(".delbatch").forEach((b) => (b.onclick = () => delWords(d.cards.filter((k) => k.added_day === b.dataset.b), `everything added ${niceDate(b.dataset.b)}`)));
+    app.querySelectorAll(".dellesson").forEach((b) => (b.onclick = () => { const l = d.lessons.find((x) => x.n === +b.dataset.n); delWords(l.cards, `Lesson ${l.n} · ${esc(l.topic)}`, "Delete whole lesson"); }));
+    app.querySelectorAll(".delbatch").forEach((b) => (b.onclick = () => delWords(d.cards.filter((k) => k.added_day === b.dataset.b), `Added ${niceDate(b.dataset.b)}`, "Delete everything from this day")));
     app.querySelectorAll(".lesson .go").forEach((b) => (b.onclick = () => go(`/s/${id}/lesson/${b.dataset.n}`)));
     app.querySelectorAll(".chk:not(.dellesson)").forEach((b) => (b.onclick = async () => {
       const l = d.lessons[b.dataset.n - 1];

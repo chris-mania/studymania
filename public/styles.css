@@ -420,6 +420,15 @@ details summary{list-style:revert}
 .cchip.done{opacity:.7} .cchip.done b{color:var(--good)}
 .btn-sub{display:block;font-size:12px;font-weight:600;opacity:.75;margin-top:2px}
 .o-tricky .no-icon{background:var(--rev-soft)}
-.chk.dellesson{color:var(--bad);border-color:var(--bad)}
-.lesson .chk.dellesson{margin-left:-4px;opacity:.75;font-size:15px}
-.lesson .chk.dellesson:hover{opacity:1}
+
+
+
+/* pick words to delete */
+.delpick{display:flex;flex-direction:column;gap:6px;max-height:46vh;overflow-y:auto;margin:10px 0 12px}
+.delrow{display:flex;align-items:center;gap:12px;background:var(--raised);border-radius:14px;padding:10px 12px;cursor:pointer;min-height:44px}
+.delrow input{width:22px;height:22px;flex:none;accent-color:var(--bad)}
+.delrow>span{flex:1 1 auto;display:flex;flex-direction:column;gap:2px;min-width:0}
+.delrow:has(input:checked){outline:2px solid var(--bad)}
+.editlesson{flex:none;background:var(--raised);color:var(--fg);border:1.5px solid var(--line);border-radius:12px;min-height:44px;padding:0 12px;font:700 14px/1 var(--body);cursor:pointer}
+.editlesson:hover{border-color:var(--muted)}
+.delall{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
