@@ -1613,7 +1613,8 @@ route(/^\/cram\/([\w-]+)\/(rapid|speed|missed|tricky|new)$/, async (id, mode) =>
   const ask = (it) => {
     const k = it.k;
     // "A vs B" cards: question 1 tests A, question 2 tests B, the last one tests C (or A again if there are only 2).
-    if (it.st === 1) return isPair(k) ? pairQ(d, k, undefined, 0) : meaningQ(d, k);
+    // "A vs B" cards start with the match question (every term at once), like in lessons.
+    if (it.st === 1) return isPair(k) ? matchQ(d, k) : meaningQ(d, k);
     if (it.st === 2) return isPair(k) ? pairQ(d, k, "meaning", 1) : hasExample(k) ? exampleQ(d, k) : termQ(d, k);
     if (it.st === 3) return isPair(k) ? pairQ(d, k, undefined, 2) : tfQ(d, k);
     return isPair(k) ? pairQ(d, k) : [meaningQ, termQ, tfQ, exampleQ][(Math.random() * 4) | 0](d, k);
@@ -1654,6 +1655,7 @@ route(/^\/cram\/([\w-]+)\/(rapid|speed|missed|tricky|new)$/, async (id, mode) =>
       return;
     }
     const q = ask(it);
+    if (q.match) return drawMatch(it, q);
     const left = mode === "speed" ? Math.max(0, SECS - Math.floor((Date.now() - S.t0) / 1000)) : 0;
     app.innerHTML = `<div class="sess"><div class="sesstop"><button class="iconbtn" id="x" aria-label="Stop">✕</button>
       ${mode === "speed" ? `<div class="bar timebar"><i id="cbar" style="width:${(left / SECS) * 100}%"></i></div><span class="combo" id="cnum">${left}s</span>` : progressBits()}</div>
@@ -1668,8 +1670,46 @@ route(/^\/cram\/([\w-]+)\/(rapid|speed|missed|tricky|new)$/, async (id, mode) =>
     app.querySelectorAll(".opt").forEach((b) => (b.onclick = () => pick(b)));
     $("idk").onclick = () => pick(null);
   }
-  function answer(it, q, btn) {
-    const k = it.k, ok = !!btn && q.opts[btn.dataset.j] === q.ans;
+  // Match each situation to its term (for "A vs B vs C" cards).
+  function drawMatch(it, q) {
+    const pick = q.rows.map(() => null);
+    app.innerHTML = `<div class="sess"><div class="sesstop"><button class="iconbtn" id="x" aria-label="Stop">✕</button>${progressBits()}</div>
+      ${classTag(d.course)}<div class="kicker">${title}${staged ? ` · ${stageNote(it)}` : ""}</div>
+      <div class="qbody"><p class="prompt">Match each one to its term</p>
+      <div class="match">${q.rows.map((r, i) => `<div class="mrow" data-i="${i}"><p>${esc(r.clue)}</p>
+        <div class="mchips">${q.names.map((n, j) => `<button class="mchip" data-i="${i}" data-j="${j}">${esc(n)}</button>`).join("")}</div></div>`).join("")}</div>
+      <button class="btn primary block" id="mcheck" disabled>Check</button>
+      <button class="btn ghost idk" id="idk">I don't know</button></div><div id="fb"></div></div>`;
+    window.scrollTo(0, 0);
+    wireTop();
+    let done = false;
+    const paint = () => {
+      app.querySelectorAll(".mchip").forEach((b) => b.classList.toggle("sel", pick[+b.dataset.i] === +b.dataset.j));
+      $("mcheck").disabled = pick.some((x) => x === null);
+    };
+    app.querySelectorAll(".mchip").forEach((b) => (b.onclick = () => {
+      if (done) return;
+      const i = +b.dataset.i, j = +b.dataset.j;
+      pick.forEach((x, r) => { if (x === j && r !== i) pick[r] = null; }); // each term goes with one situation
+      pick[i] = j; paint();
+    }));
+    const grade = (idk) => {
+      if (done || S.over) return; done = true;
+      let all = !idk;
+      app.querySelectorAll(".mrow").forEach((row) => {
+        const i = +row.dataset.i, right = q.rows[i].ans, ok = !idk && q.names[pick[i]] === right;
+        if (!ok) all = false;
+        row.classList.add(ok ? "right" : "wrong");
+        row.querySelectorAll(".mchip").forEach((b) => { b.disabled = true; if (q.names[+b.dataset.j] === right) b.classList.add("right"); else if (+b.dataset.j === pick[i]) b.classList.add("wrong"); });
+      });
+      $("mcheck").disabled = true;
+      answer(it, q, null, { ok: all, idk });
+    };
+    $("mcheck").onclick = () => grade(false);
+    $("idk").onclick = () => grade(true);
+  }
+  function answer(it, q, btn, forced) {
+    const k = it.k, ok = forced ? forced.ok : !!btn && q.opts[btn.dataset.j] === q.ans;
     S.asked++;
     app.querySelectorAll(".opt").forEach((x) => { if (q.opts[x.dataset.j] === q.ans) x.classList.add("right"); else if (x !== btn) x.classList.add("dim"); x.disabled = true; });
     if (btn && !ok) btn.classList.add("wrong");
@@ -1681,7 +1721,7 @@ route(/^\/cram\/([\w-]+)\/(rapid|speed|missed|tricky|new)$/, async (id, mode) =>
     S.touched = S.touched || new Set(); S.touched.add(k.id);
     if (ok) { S.right++; S.combo++; S.best = Math.max(S.best, S.combo); S.xp += mode === "speed" ? 3 : 5; chime("good"); buzz(10); if (!S.wrong.has(k.id)) S.fixed.add(k.id); }
     else {
-      S.combo = 0; S.wrong.add(k.id); S.fixed.delete(k.id); if (btn) { chime("bad"); buzz([30, 40, 30]); }
+      S.combo = 0; S.wrong.add(k.id); S.fixed.delete(k.id); if (btn || (forced && !forced.idk)) { chime("bad"); buzz([30, 40, 30]); }
       // Staged drills: the card comes back a few words later and the word starts over (up to 4 times).
       S.tries[k.id] = (S.tries[k.id] || 0) + 1;
       if (staged && S.tries[k.id] <= 4) queue.splice(Math.min(S.i + 3, queue.length), 0, { k, st: 1 });
@@ -1690,7 +1730,7 @@ route(/^\/cram\/([\w-]+)\/(rapid|speed|missed|tricky|new)$/, async (id, mode) =>
     if (mode === "speed") return setTimeout(nextQ, ok ? 250 : 900);
     if (ok) return setTimeout(nextQ, 550);
     const parts = isPair(k) ? k.parts.map((p) => `<p class="small"><b>${esc(p.term)}</b>: ${esc(p.simple)}</p>`).join("") : `<p><b>${esc(k.term)}</b>: ${esc(k.simple)}</p>`;
-    $("fb").innerHTML = `<div class="feedback no"><h3>${btn ? "Not quite" : "Here it is"}</h3>${parts}${k.confuse ? `<p class="small">${esc(k.confuse)}</p>` : ""}
+    $("fb").innerHTML = `<div class="feedback no"><h3>${btn || (forced && !forced.idk) ? "Not quite" : "Here it is"}</h3>${parts}${k.confuse ? `<p class="small">${esc(k.confuse)}</p>` : ""}
       <p class="small muted">${staged ? (S.tries[k.id] <= 4 ? `${cardFirst ? "You'll see the card again in a moment, then" : "In a moment"} this word starts over until you get it.` : "Still on your missed list. We'll keep drilling it next time.") : "Saved to your missed words."}</p>
       <button class="btn ghost block" id="seecard">📖 See the card</button><button class="btn bad block" id="cont">Next</button></div>`;
     $("seecard").onclick = () => cardSheet(k);
