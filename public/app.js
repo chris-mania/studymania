@@ -1575,12 +1575,21 @@ function celebrate(before, { xp, accuracy, best, text, title, after }) {
 
 // Mix of words for Rapid fire and games: about 60% from your weak words (missed, tricky, shaky, due),
 // 40% from everything else, so you keep seeing ALL your words, not just the hard ones.
+// Words shown recently in games / Rapid fire (per class), so the next round moves on to OTHER words
+// instead of repeating the same ones. Once you've been through most of the class, it starts over.
+const shownKey = (d) => "sm-shown-" + d.course.id;
+function markShown(d, ks) {
+  const ids = ks.filter(Boolean).map((k) => k.id), cap = Math.max(20, Math.round(d.cards.length * 0.7));
+  store.set(shownKey(d), [...store.get(shownKey(d), []).filter((x) => !ids.includes(x)), ...ids].slice(-cap));
+}
 function mixPick(d, n, list = d.cards) {
   const T = todayStr(), missed = new Set(missedList(d));
   // Weak = missed, "Know it" score 6 or lower, or time to see it again. The rest go oldest-seen first, so every word comes up.
   const weak = (k) => { const p = d.progress[k.id]; return missed.has(k.id) || (p?.learned_at && ((know(d, k) ?? 0) <= 6 || needsRetest(p, T) || (p.due && p.due <= T))); };
   const seen = (k) => d.progress[k.id]?.last_seen || d.progress[k.id]?.learned_at || "";
-  const jitter = (arr, f) => arr.map((k) => [f(k) + Math.random() * 1.5, k]).sort((a, b) => a[0] - b[0]).map((x) => x[1]);
+  // Recently shown words go to the back (the more recent, the further back), plus some randomness.
+  const shown = store.get(shownKey(d), []), rec = Object.fromEntries(shown.map((x, i) => [x, (i + 1) / shown.length]));
+  const jitter = (arr, f) => arr.map((k) => [f(k) + (rec[k.id] ? 8 + rec[k.id] * 8 : 0) + Math.random() * 3, k]).sort((a, b) => a[0] - b[0]).map((x) => x[1]);
   const w = jitter(list.filter(weak), (k) => need(d, k) / 3);
   const r = jitter(list.filter((k) => !weak(k)), (k) => { const s = seen(k); return s ? -daysBetween(s, T) / 2 : -5; }), out = [];
   while (out.length < n && (w.length || r.length)) out.push((w.length && (Math.random() < 0.6 || !r.length) ? w : r).shift());
@@ -1663,7 +1672,7 @@ route(/^\/cram\/([\w-]+)\/(rapid|speed|missed|tricky|new)$/, async (id, mode) =>
     : mode === "tricky" ? shuffle(d.cards.filter((k) => isTricky(d.progress[k.id])))
     // New words: ones you haven't learned yet, newest notes first.
     : mode === "new" ? d.cards.filter((k) => !isLearned(d, k)).sort((a, b) => (b.added_day || "").localeCompare(a.added_day || ""))
-    : mode === "rapid" ? mixPick(d, Math.min(25, d.cards.length))
+    : mode === "rapid" ? (() => { const r = mixPick(d, Math.min(25, d.cards.length)); markShown(d, r); return r; })()
     : shuffle([...d.cards]).sort((a, b) => weight(a) - weight(b));
   if (!pool.length) { toast(mode === "missed" ? "No missed words in this subject. Nice." : mode === "tricky" ? "No tricky words yet. Nice." : mode === "new" ? "No new words left. You've learned them all." : "This subject has no words yet."); return go(`/c/${id}`); }
   const ROUND = mode === "rapid" ? Math.min(25, pool.length) : mode === "missed" || mode === "tricky" || mode === "new" ? Math.min(30, pool.length) : Infinity;
@@ -1935,7 +1944,7 @@ route(/^\/game\/([\w-]+)\/(fall|match|sort|tf)$/, async (id, kind) => {
     const spawn = () => {
       if (!alive()) return;
       if (!bag.length) bag = mixPick(d, words.length, words).filter((k) => k !== G.cur);
-      const k = bag.shift() || words[0]; G.cur = k;
+      const k = bag.shift() || words[0]; G.cur = k; markShown(d, [k]);
       G.opts = shuffle([k, ...distract(k, Math.min(3, words.length - 1))]);
       drop.className = "drop"; drop.textContent = maskTerm(k.simple, k); G.y = 0; G.pause = false; drop.style.transform = "translateY(0px)";
       fo.innerHTML = G.opts.map((o, i) => `<button class="gopt" data-o="${i}">${esc(o.term)}</button>`).join("");
@@ -1970,7 +1979,7 @@ route(/^\/game\/([\w-]+)\/(fall|match|sort|tf)$/, async (id, kind) => {
     const words = d.cards.filter((k) => !isPair(k));
     app.innerHTML = hud(`<span>Pairs <b id="ms">0</b></span><span><b id="mt">45</b>s</span>`) + `<div class="gtimer"><i id="mbar" style="width:100%"></i></div><div class="mgrid" id="mg"></div></div>`;
     const deal = () => {
-      const ts = mixPick(d, Math.min(5, words.length), words); G.done = 0; G.n = ts.length;
+      const ts = mixPick(d, Math.min(5, words.length), words); markShown(d, ts); G.done = 0; G.n = ts.length;
       G.tiles = shuffle(ts.flatMap((k) => [{ k, side: "term", x: k.term }, { k, side: "def", x: maskTerm(k.simple, k) }]));
       $("mg").innerHTML = G.tiles.map((t, i) => `<button class="mt ${t.side}" data-i="${i}">${esc(t.x)}</button>`).join("");
     };
@@ -2006,6 +2015,7 @@ route(/^\/game\/([\w-]+)\/(fall|match|sort|tf)$/, async (id, kind) => {
     if (!sets.length) { toast("Sort It needs \"A vs B\" cards in this class."); return go(`/games/${id}`); }
     const pickSets = mixPick(d, sets.length, sets.map((x) => x.k)).map((k) => sets.find((x) => x.k.id === k.id));
     let items = shuffle(pickSets.flatMap((st) => st.b.flatMap((bk, j) => bk.items.map((x) => ({ x, st, j }))))).slice(0, 12);
+    markShown(d, [...new Set(items.map((it) => it.st.k))]);
     Object.assign(G, { i: 0, score: 0, lock: false });
     const next = () => {
       if (!alive()) return;
@@ -2038,7 +2048,7 @@ route(/^\/game\/([\w-]+)\/(fall|match|sort|tf)$/, async (id, kind) => {
       <p class="small" id="tfx" style="min-height:44px"></p></div>`;
     const next = () => {
       if (!bag.length) bag = mixPick(d, words.length, words);
-      G.cur = bag.shift(); G.truth = Math.random() < 0.5;
+      G.cur = bag.shift(); markShown(d, [G.cur]); G.truth = Math.random() < 0.5;
       const other = distract(G.cur, 1)[0] || G.cur;
       $("tt").textContent = G.cur.term; $("td").textContent = "means: " + maskTerm(G.truth ? G.cur.simple : other.simple, G.cur); $("tc").className = "tfcard";
       if (!G.truth && other === G.cur) G.truth = true;
