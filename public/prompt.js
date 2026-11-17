@@ -6,6 +6,11 @@ const BASE_PROMPT = `You are making study cards for Study Mania, an app that tea
 - If no notes are pasted or attached, reply only: "Please paste or attach your notes." Do not make anything up.
 - Read ALL of the material, including text in diagrams, charts and tables. Write in the same language as my notes.
 
+MAKE THE EXAMPLES PERSONAL
+- If you already know things about me from our past chats or your memory (my school, my sport or team, shows I love, my job, hobbies, where I live), use them in a lot of the "example" and "scenario" fields. For example, if I play baseball, go to Rutgers or love South Park, set examples there.
+- Still mix in well-known general examples (big brands, celebrities, everyday college life) so it isn't all one thing.
+- If you don't know anything about me, just use strong general examples. Never ask me about myself and never make up facts about me.
+
 WHAT TO MAKE A CARD FOR
 - Every term, concept, formula, process/sequence, person/event, and "difference between X and Y" that could be on a multiple-choice exam.
 - Definitely include anything my notes mark as important, on the exam, or repeated. Skip filler (title slides, agendas, "questions?").
