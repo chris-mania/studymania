@@ -434,3 +434,4 @@ details summary{list-style:revert}
 .delall{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
 .o-new .no-icon{background:var(--flame-soft)} .o-new.hot{border-color:var(--flame)} .o-new .no-badge{background:var(--flame-soft);color:var(--flame)}
 .o-add .no-icon{background:var(--raised)}
+.pctbtn{background:none;border:0;cursor:pointer;padding:6px 4px;min-width:44px;text-align:right}

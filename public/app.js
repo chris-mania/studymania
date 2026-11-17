@@ -1618,7 +1618,25 @@ route(/^\/cram\/([\w-]+)\/(rapid|speed|missed|tricky|new)$/, async (id, mode) =>
     if (it.st === 3) return isPair(k) ? pairQ(d, k, undefined, 2) : tfQ(d, k);
     return isPair(k) ? pairQ(d, k) : [meaningQ, termQ, tfQ, exampleQ][(Math.random() * 4) | 0](d, k);
   };
-  const stageNote = (it) => (it.st === 1 ? (S.tries[it.k.id] ? "starting over" : "check") : it.st === 2 ? "one more time" : it.st === 3 ? "final check: true or false" : "");
+  // Progress as a steady percentage of the words in this round (words that come back don't change it).
+  const roundWords = new Set(queue.map((x) => x.k.id)).size;
+  const wordsDone = () => staged ? [...new Set(queue.map((x) => x.k.id))].filter((id) => S.lastOk[id] === true || (S.tries[id] || 0) > 4).length : Math.min(S.i, queue.length);
+  const wordsLeft = () => Math.max(0, roundWords - wordsDone());
+  const pctDone = () => Math.round((wordsDone() / Math.max(1, roundWords)) * 100);
+  const progressBits = () => `<div class="bar"><i style="width:${pctDone()}%"></i></div>
+      <button type="button" class="combo pctbtn" id="cnum" aria-label="${plural(wordsLeft(), "word")} left">${pctDone()}%</button>`;
+  const wireTop = () => {
+    $("x").onclick = () => {
+      const n = wordsLeft();
+      if (!n) return finish(true);
+      const el = sheet(`<h2>Stop now?</h2><p>${plural(n, "word")} left in this round. What you've done so far is saved.</p>
+        <button class="btn primary block" id="st-go">Keep going</button><button class="btn ghost block" id="st-stop">Stop for now</button>`);
+      el.querySelector("#st-go").onclick = () => el.remove();
+      el.querySelector("#st-stop").onclick = () => { el.remove(); finish(true); };
+    };
+    if (mode !== "speed" && $("cnum")) $("cnum").onclick = () => toast(`${plural(wordsLeft(), "word")} left (${pctDone()}% done)`);
+  };
+  const stageNote = (it) => (it.st === 1 ? (S.tries[it.k.id] ? "starting over" : "check") : it.st === 2 ? "one more time" : it.st === 3 ? "bonus check: true or false" : "");
 
   function draw() {
     if (S.over) return;
@@ -1627,26 +1645,24 @@ route(/^\/cram\/([\w-]+)\/(rapid|speed|missed|tricky|new)$/, async (id, mode) =>
     // Missed / New words: read the card first, then answer.
     if (cardFirst && it.st === 1 && !it.seen) {
       app.innerHTML = `<div class="sess"><div class="sesstop"><button class="iconbtn" id="x" aria-label="Stop">✕</button>
-        <div class="bar"><i style="width:${(S.i / queue.length) * 100}%"></i></div><span class="combo">${S.i + 1}/${queue.length}</span></div>
+        ${progressBits()}</div>
         ${classTag(d.course)}<div class="kicker">${title} · ${S.tries[k.id] ? "one more look" : "read it, then answer"}</div>
         ${cardView(k)}<div class="footbtn"><button class="btn primary block" id="n">Test me</button></div></div>`;
       window.scrollTo(0, 0);
-      $("x").onclick = () => finish(true);
+      wireTop();
       $("n").onclick = () => { it.seen = true; draw(); };
       return;
     }
     const q = ask(it);
     const left = mode === "speed" ? Math.max(0, SECS - Math.floor((Date.now() - S.t0) / 1000)) : 0;
-    const pct = mode === "speed" ? (left / SECS) * 100 : (S.i / queue.length) * 100;
     app.innerHTML = `<div class="sess"><div class="sesstop"><button class="iconbtn" id="x" aria-label="Stop">✕</button>
-      <div class="bar ${mode === "speed" ? "timebar" : ""}"><i id="cbar" style="width:${pct}%"></i></div>
-      <span class="combo" id="cnum">${mode === "speed" ? `${left}s` : `${S.i + 1}/${queue.length}`}</span></div>
+      ${mode === "speed" ? `<div class="bar timebar"><i id="cbar" style="width:${(left / SECS) * 100}%"></i></div><span class="combo" id="cnum">${left}s</span>` : progressBits()}</div>
       ${classTag(d.course)}<div class="kicker">${title}${staged ? ` · ${stageNote(it)}` : ""}${mode === "speed" ? ` · ${S.right} right` : S.combo >= 3 ? ` · 🔥${S.combo}` : ""}</div>
       <div class="qbody"><p class="prompt">${q.html}</p>
       <div class="opts">${q.opts.map((o, j) => `<button class="opt" data-j="${j}"><span class="k">${"ABCD"[j]}</span><span>${esc(o)}</span></button>`).join("")}</div>
       <button class="btn ghost idk" id="idk">${mode === "speed" ? "Skip" : "I don't know"}</button></div><div id="fb"></div></div>`;
     window.scrollTo(0, 0);
-    $("x").onclick = () => finish(true);
+    if (mode === "speed") $("x").onclick = () => finish(true); else wireTop();
     let done = false;
     const pick = (btn) => { if (done || S.over) return; done = true; answer(it, q, btn); };
     app.querySelectorAll(".opt").forEach((b) => (b.onclick = () => pick(b)));
@@ -1660,9 +1676,8 @@ route(/^\/cram\/([\w-]+)\/(rapid|speed|missed|tricky|new)$/, async (id, mode) =>
     // Staged drills: a word only counts as known after its final true/false. A miss anywhere starts it over.
     if (!staged) S.lastOk[k.id] = ok;
     else if (!ok) S.lastOk[k.id] = false;
-    else if (it.st === 3) S.lastOk[k.id] = true;
     else if (it.st === 1) queue.splice(Math.min(S.i + 4, queue.length), 0, { k, st: 2 }); // second question a few words later
-    else if (it.st === 2) queue.push({ k, st: 3 }); // true/false at the end
+    else if (it.st === 2) { S.lastOk[k.id] = true; queue.push({ k, st: 3 }); } // learned! quick true/false bonus check at the end
     S.touched = S.touched || new Set(); S.touched.add(k.id);
     if (ok) { S.right++; S.combo++; S.best = Math.max(S.best, S.combo); S.xp += mode === "speed" ? 3 : 5; chime("good"); buzz(10); if (!S.wrong.has(k.id)) S.fixed.add(k.id); }
     else {
