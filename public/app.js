@@ -1089,7 +1089,7 @@ route(/^\/c\/([\w-]+)$/, async (id) => {
       </div>
     </div>`;
     if ($("c-next")) $("c-next").onclick = () => go(`/s/${id}/lesson/${nextL.n}`);
-    $("c-review").onclick = () => (due ? go(`/s/${id}/review`) : toast("Nothing due yet. Try rapid fire instead."));
+    $("c-review").onclick = () => (due ? go(`/s/${id}/review/all`) : toast("Nothing due yet. Try rapid fire instead."));
     $("c-exam").onclick = () => go(`/exam/${id}`);
     $("c-plan").onclick = () => planSheet(c, draw);
     if ($("c-alldone")) $("c-alldone").onclick = async () => {
@@ -1289,7 +1289,7 @@ const aiQ = (q) => ({ topic: q.topic, html: esc(q.q), opts: shuffle([...q.choice
 const COUNTS_AT = 0.8; // a quit round counts toward the streak once it's 80% done
 
 // ---------- lessons + reviews ----------
-route(/^\/s\/([\w-]+)\/(next|review|quiz|lesson|misses)(?:\/(\d+))?$/, async (id, kind, num) => {
+route(/^\/s\/([\w-]+)\/(next|review|quiz|lesson|misses)(?:\/(\d+|all))?$/, async (id, kind, num) => {
   let d;
   try { d = await loadCourse(id); } catch (e) { toast(e.message); return go("/"); }
   const T = todayStr();
@@ -1314,7 +1314,8 @@ route(/^\/s\/([\w-]+)\/(next|review|quiz|lesson|misses)(?:\/(\d+))?$/, async (id
       pool = d.cards.filter((k) => isLearned(d, k));
       if (kind === "review") pool = pool.filter((k) => d.progress[k.id].due <= T).sort((a, b) => d.progress[a.id].due.localeCompare(d.progress[b.id].due));
       else pool = shuffle(pool).sort((a, b) => (d.progress[a.id].box || 0) - (d.progress[b.id].box || 0));
-      pool = pool.slice(0, kind === "review" ? 12 : 10);
+      // Review from Study & Cram goes over EVERY due word at once; the quick review before a lesson stays at 12.
+      pool = pool.slice(0, kind === "review" ? (num === "all" ? Infinity : 12) : 10);
     }
     if (!pool.length) { toast(kind === "review" ? "Nothing due yet. Nice." : "Learn a lesson first."); return go(`/c/${id}`); }
     if (kind === "misses") pool.forEach((k) => { d.seen.add(k.id); steps.push({ t: "teach", k, again: true }); });
@@ -1591,7 +1592,7 @@ route(/^\/study\/([\w-]+)$/, (id) => {
     <div>${classTag(c)}<div class="kicker" style="color:var(--rev)">Study &amp; Cram${multi ? " · 2 of 2" : ""}</div><h1 style="margin-top:4px">What do you need?</h1></div>
     ${c.total - c.learned > 0 && ((n !== null && n >= 0 && n <= 2) || c.plan.phase === "review") ? opt(`/cram/${id}/new`, "o-new hot", "🆕", "New words", "Words you haven't learned yet, newest first. Card first, then a quick quiz", c.total - c.learned) : ""}
     ${opt(`/cram/${id}/rapid`, "o-cram" + (n !== null && n <= 7 ? " hot" : ""), "⚡", n !== null && n >= 0 && n <= 7 ? `Exam ${n ? `in ${plural(n, "day")}` : "today"}? Cram` : "Cram", "Rapid fire: mostly your weak words, mixed with all the rest")}
-    ${opt(c.due ? `/s/${id}/review` : `/cram/${id}/rapid`, "o-rev", "🔁", "Review", c.due ? "Words that are due so you don't forget them" : "Nothing due right now. This opens rapid fire instead", c.due || "")}
+    ${opt(c.due ? `/s/${id}/review/all` : `/cram/${id}/rapid`, "o-rev", "🔁", "Review", c.due ? `All ${plural(c.due, "word")} that are due, in one go` : "Nothing due right now. This opens rapid fire instead", c.due || "")}
     ${opt(`/exam/${id}`, "o-exam", "📝", "Practice exam", "Like the real test, with a score")}
     ${c.missed ? opt(`/cram/${id}/missed`, "o-miss", "🎯", "Fix missed words", "Everything you got wrong, until you get it right", c.missed) : ""}
     ${c.tricky ? opt(`/cram/${id}/tricky`, "o-tricky", "🧠", "Tricky words", "Every word you've missed before, even once. They also come back more often in reviews.", c.tricky) : ""}
