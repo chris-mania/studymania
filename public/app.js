@@ -1196,7 +1196,7 @@ function markSheet(d, after, first) {
 // ---------- questions ----------
 // "See the card": read the whole word again after a miss (Study & Cram and reviews).
 function cardSheet(k) {
-  const el = sheet(`${cardView(k)}<button class="btn primary block" id="cs-ok" style="margin-top:12px">Got it</button>`);
+  const el = sheet(`<div class="scroll">${cardView(k)}</div><button class="btn primary block" id="cs-ok" style="flex:none">Got it</button>`);
   el.querySelector("#cs-ok").onclick = () => el.remove();
 }
 function cardView(k) {

@@ -470,3 +470,6 @@ details summary{list-style:revert}
 .tfb kbd{font:600 12px var(--body);opacity:.6;margin-left:6px}
 .gmiss{background:var(--surface);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:2px}
 .gmiss span{font-size:14px;color:var(--muted)}
+/* every pop-up can scroll when its content is tall (long cards, word lists) */
+.sheet-in{overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+.sheet-in:has(> .scroll){overflow:hidden}
