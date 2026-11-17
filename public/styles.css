@@ -432,3 +432,5 @@ details summary{list-style:revert}
 .editlesson{flex:none;background:var(--raised);color:var(--fg);border:1.5px solid var(--line);border-radius:12px;min-height:44px;padding:0 12px;font:700 14px/1 var(--body);cursor:pointer}
 .editlesson:hover{border-color:var(--muted)}
 .delall{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+.o-new .no-icon{background:var(--flame-soft)} .o-new.hot{border-color:var(--flame)} .o-new .no-badge{background:var(--flame-soft);color:var(--flame)}
+.o-add .no-icon{background:var(--raised)}

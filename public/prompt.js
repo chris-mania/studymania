@@ -1,7 +1,8 @@
 // The prompt people copy into ChatGPT, Claude, Gemini, Grok, etc. along with their notes or slides.
-window.STUDY_PROMPT = `You are making study cards for Study Mania, an app that teaches a class a little each day with short lessons and multiple-choice quizzes. It works for ANY class. Turn MY NOTES (pasted or attached below: slides, my own notes, a study guide or textbook pages) into cards and exam questions.
+// buildPrompt({ test, cram }) adds what the test is like and a short-on-time version.
+const BASE_PROMPT = `You are making study cards for Study Mania, an app that teaches a class a little each day with short lessons and multiple-choice quizzes. It works for ANY class. Turn MY NOTES (pasted or attached below: slides, my own notes, a study guide or textbook pages) into cards and exam questions.
 
-BEFORE YOU START
+{{FOCUS}}BEFORE YOU START
 - If no notes are pasted or attached, reply only: "Please paste or attach your notes." Do not make anything up.
 - Read ALL of the material, including text in diagrams, charts and tables. Write in the same language as my notes.
 
@@ -38,7 +39,8 @@ EXAM QUESTIONS
 For each topic, write 2-3 questions like a professor would put on a test (for pair cards, test different terms of the pair, not always the first one): apply an idea to a short scenario, say which concept a situation shows, compare two ideas, or calculate something. 4 choices, near-miss wrong ones, only terms from that topic or earlier ones. "answer" must be copied exactly from a choice. "why" explains it in one sentence. Before finishing, check that exactly one choice is correct.
 
 HOW TO SEND IT
-- First count the cards. 30 or fewer: send them all in one block. More than 30: send 30 per block and end each block's message with only "Say NEXT for more." When I say NEXT, continue from the next card number.
+- Send EVERYTHING in ONE reply: every card and every exam question, in one JSON block. Keep each field short so it all fits. Don't ask me anything first and don't send it in pieces to be safe.
+- Only if you truly run out of room partway through: stop right after a complete card, set "parts_total" to how many parts you need, and end with only "Say NEXT for more." When I say NEXT, continue from the next card number.
 - Reply with ONLY a JSON code block in this exact shape:
 {
   "subject": "short class name",
@@ -56,3 +58,19 @@ HOW TO SEND IT
 
 MY NOTES:
 `;
+
+const TEST_FOCUS = {
+  mc: "THE TEST: multiple choice. Focus on what multiple-choice questions test: key terms, what they mean, and telling look-alike ideas apart. Skip long background, history and stories unless the notes say they're on the test.",
+  def: "THE TEST: mostly definitions and vocab. Make a card for every term, keep each \"definition\" close to my notes' exact wording, and make the wrong answers near-miss definitions.",
+  concept: "THE TEST: concepts and scenarios. Questions apply ideas to situations. Use the \"question\" field for a short scenario more often, and make most exam questions scenario-based.",
+  math: "THE TEST: calculations and formulas. Make a card for every formula with a worked example, and make most exam questions calculations with numbers.",
+};
+const CRAM_FOCUS = `SHORT ON TIME (my exam is very soon):
+- Only make cards for what is most likely to be tested: key terms, definitions, formulas, and anything my notes mark as important, on the exam or repeated. Skip minor examples, background, history, intros and filler.
+- Combine small related terms into pair cards whenever you can (2-3 terms per card). This replaces the one-pair-card-per-topic limit below.
+- Keep "definition" to 1 sentence and "example" to 1 short sentence. 1-2 exam questions per topic.
+
+`;
+window.buildPrompt = ({ test = "", cram = false } = {}) =>
+  BASE_PROMPT.replace("{{FOCUS}}", (TEST_FOCUS[test] ? TEST_FOCUS[test] + "\n\n" : "") + (cram ? CRAM_FOCUS : ""));
+window.STUDY_PROMPT = window.buildPrompt();

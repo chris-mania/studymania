@@ -853,9 +853,12 @@ function parseReply(text) {
   return { subject, cards, questions, cut, broken, badTerms: badTerms.filter(Boolean), repeats, meta, lastN, lastTerm: cards[cards.length - 1].term };
 }
 
-route(/^\/add(?:\/([\w-]+))?$/, (addTo) => {
+route(/^\/add(?:\/([\w-]+))?(\/cram)?$/, (addTo, cramFlag) => {
   const existing = addTo ? ME.courses.find((c) => c.id === addTo) : null;
-  const S = { step: existing ? 2 : 1, name: "", color: ME.courses.length % COLORS, parsed: null, raw: "", plan: planState({}), addN: 1, last: false };
+  const cram = !!(cramFlag && existing); // "Add last-minute notes" from Study & Cram: short-on-time prompt, then straight into the New words drill
+  const testKey = "sm-test-" + (addTo || "new");
+  const S = { step: existing ? 2 : 1, name: "", color: ME.courses.length % COLORS, parsed: null, raw: "", plan: planState({}), addN: 1, last: false, test: store.get(testKey, "mc") };
+  const TESTS = [["mc", "Multiple choice"], ["def", "Definitions"], ["concept", "Concepts & scenarios"], ["math", "Math & formulas"], ["", "Not sure / mixed"]];
   const draw = () => {
     const stepBar = `<div class="steps">${[1, 2, 3].map((i) => `<i class="${i <= S.step ? "on" : ""}"></i>`).join("")}</div>`;
     let body = "";
@@ -867,7 +870,12 @@ route(/^\/add(?:\/([\w-]+))?$/, (addTo) => {
       <button class="btn primary block" id="a-next">Next</button>
       <button class="btn ghost" id="a-sample">Or try a sample subject first</button>`;
     if (S.step === 2) body = `
-      <h1>${existing ? `Add notes or slides to ${esc(existing.name)}` : "Turn your notes or slides into lessons"}</h1>
+      ${cram ? classTag(existing) : ""}
+      <h1>${cram ? "Add last-minute notes" : existing ? `Add notes or slides to ${esc(existing.name)}` : "Turn your notes or slides into lessons"}</h1>
+      ${cram ? `<p class="muted">Exam soon? This version tells the AI to keep only what's likely on the test and combine small terms. Then you cram the new words right away: card first, then a quick quiz.</p>` : ""}
+      <div class="field"><span style="font-weight:700;font-size:15px">What's the test like?</span>
+        <div class="seg wrap">${TESTS.map(([v, t]) => `<button type="button" data-test="${v}" aria-pressed="${S.test === v}">${t}</button>`).join("")}</div>
+        <span class="muted small">The AI focuses on what that kind of test asks.</span></div>
       <div class="card stack">
         <p><b>1.</b> Copy the Study Mania prompt.</p>
         <button class="btn primary block" id="a-copy">Copy prompt</button>
@@ -878,7 +886,7 @@ route(/^\/add(?:\/([\w-]+))?$/, (addTo) => {
           <a class="btn sm" href="https://gemini.google.com/app" target="_blank" rel="noopener">Gemini</a>
           <a class="btn sm" href="https://grok.com/" target="_blank" rel="noopener">Grok</a>
         </div>
-        <p class="muted small">Slides won't upload? Save them as a PDF first (in PowerPoint: File → Save As → PDF). Lots of material? The AI sends it in parts. Say NEXT, and paste all the parts together in the next step. Only have this week's chapters? That's fine. Add the next ones whenever you get them.</p>
+        <p class="muted small">Slides won't upload? Save them as a PDF first (in PowerPoint: File → Save As → PDF). The AI is told to send everything in one reply. If it ever splits it into parts, say NEXT and paste all the parts together in the next step. Only have this week's chapters? That's fine. Add the next ones whenever you get them.</p>
       </div>
       <button class="btn block" id="a-next">I have the reply</button>
       ${existing ? "" : `<button class="btn ghost" id="a-back">Back</button>`}`;
@@ -901,7 +909,7 @@ route(/^\/add(?:\/([\w-]+))?$/, (addTo) => {
             <div class="seg wrap">${[1, 2, 3, 4].map((n) => `<button type="button" data-addn="${n}" aria-pressed="${S.addN === n}">${n}</button>`).join("")}</div>
             <span class="muted small">You'll have ${Math.min(existing.more_total, (existing.more_have || 0) + S.addN)} of ${existing.more_total}.</span></div>` : ""}
           <label class="checkrow"><input type="checkbox" id="a-last" ${S.last ? "checked" : ""}> This is the last of it. I have everything now.</label></div>` : ""}
-        <button class="btn primary block" id="a-save">${existing ? "Add to " + esc(existing.name) : "Create subject"}</button>` : `<button class="btn primary block" id="a-check">Check reply</button>`}
+        <button class="btn primary block" id="a-save">${cram ? "Add and start cramming" : existing ? "Add to " + esc(existing.name) : "Create subject"}</button>` : `<button class="btn primary block" id="a-check">Check reply</button>`}
       <button class="btn ghost" id="a-back">Back</button>`;
     app.innerHTML = `${topbar(existing ? "/c/" + existing.id : "/")}<div class="stack">${stepBar}${body}</div>`;
     if (S.step === 1) {
@@ -919,9 +927,11 @@ route(/^\/add(?:\/([\w-]+))?$/, (addTo) => {
     }
     if (S.step === 2) {
       $("a-copy").onclick = async () => {
-        try { await navigator.clipboard.writeText(window.STUDY_PROMPT); toast("Prompt copied. Now paste it into your AI."); $("a-copy").textContent = "Copied ✓"; }
-        catch { promptSheet(); }
+        const text = window.buildPrompt({ test: S.test, cram });
+        try { await navigator.clipboard.writeText(text); toast("Prompt copied. Now paste it into your AI."); $("a-copy").textContent = "Copied ✓"; }
+        catch { promptSheet(text); }
       };
+      app.querySelectorAll("[data-test]").forEach((b) => (b.onclick = () => { S.test = b.dataset.test; store.set(testKey, S.test); draw(); }));
       $("a-next").onclick = () => { S.step = 3; draw(); };
       if ($("a-back")) $("a-back").onclick = () => { S.step = 1; draw(); };
     }
@@ -951,7 +961,9 @@ route(/^\/add(?:\/([\w-]+))?$/, (addTo) => {
             toast(r.skipped ? `Added ${plural(r.added, "new word")}. ${r.skipped} ${r.skipped === 1 ? "was" : "were"} already here, so we skipped ${r.skipped === 1 ? "it" : "them"}.` : `Added ${plural(r.added, "new word")}.`, 4500);
           }
           else { const r = await api("/courses", { method: "POST", body: { name: S.name || S.parsed.subject || "My subject", color: S.color, ...planToFields(S.plan), cards: S.parsed.cards, questions: S.parsed.questions } }); id = r.id; }
-          await loadMe(); go(`/c/${id}`);
+          await loadMe();
+          if (cram) { delete courseCache[id]; return go(`/cram/${id}/new`); }
+          go(`/c/${id}`);
         } catch (e) { toast(e.message); $("a-save").disabled = false; }
       };
     }
@@ -1007,9 +1019,9 @@ function coverageCheck(P) {
   return { ok, warns, check: `Check your work: go back through ALL of my notes and make cards for anything important you skipped. Same JSON format, only the new cards, numbering from ${next}. If you skipped nothing, reply with {"cards": []}.` };
 }
 
-function promptSheet() {
+function promptSheet(text = window.STUDY_PROMPT) {
   const el = sheet(`<h2>Copy this prompt</h2><p class="muted">Press and hold to select it all, then copy.</p>
-    <textarea readonly style="flex:1;min-height:260px">${esc(window.STUDY_PROMPT)}</textarea><button class="btn primary block">Done</button>`);
+    <textarea readonly style="flex:1;min-height:260px">${esc(text)}</textarea><button class="btn primary block">Done</button>`);
   el.querySelector("button").onclick = () => el.remove();
   el.querySelector("textarea").select();
 }
@@ -1552,17 +1564,19 @@ route(/^\/study\/([\w-]+)$/, (id) => {
   const opt = (href, cls, icon, title, sub, badge) => `<a class="needopt ${cls}" href="#${href}"><span class="no-icon" aria-hidden="true">${icon}</span><div class="grow"><b>${title}</b><span>${sub}</span></div>${badge ? `<span class="no-badge">${badge}</span>` : `<span class="go-arrow">›</span>`}</a>`;
   app.innerHTML = `${topbar(multi ? "/study" : "/")}<div class="stack">
     <div>${classTag(c)}<div class="kicker" style="color:var(--rev)">Study &amp; Cram${multi ? " · 2 of 2" : ""}</div><h1 style="margin-top:4px">What do you need?</h1></div>
+    ${c.total - c.learned > 0 && ((n !== null && n >= 0 && n <= 2) || c.plan.phase === "review") ? opt(`/cram/${id}/new`, "o-new hot", "🆕", "New words", "Words you haven't learned yet, newest first. Card first, then a quick quiz", c.total - c.learned) : ""}
     ${opt(`/cram/${id}/rapid`, "o-cram" + (n !== null && n <= 7 ? " hot" : ""), "⚡", n !== null && n >= 0 && n <= 7 ? `Exam ${n ? `in ${plural(n, "day")}` : "today"}? Cram` : "Cram", "Rapid fire through every word, weakest first")}
     ${opt(c.due ? `/s/${id}/review` : `/cram/${id}/rapid`, "o-rev", "🔁", "Review", c.due ? "Words that are due so you don't forget them" : "Nothing due right now. This opens rapid fire instead", c.due || "")}
     ${opt(`/exam/${id}`, "o-exam", "📝", "Practice exam", "Like the real test, with a score")}
     ${c.missed ? opt(`/cram/${id}/missed`, "o-miss", "🎯", "Fix missed words", "Everything you got wrong, until you get it right", c.missed) : ""}
     ${c.tricky ? opt(`/cram/${id}/tricky`, "o-tricky", "🧠", "Tricky words", "Every word you've missed before, even once. They also come back more often in reviews.", c.tricky) : ""}
+    ${opt(`/add/${id}/cram`, "o-add", "📥", "Add last-minute notes", "Forgot some notes? Short-on-time version: only what's likely on the test, then cram it right away")}
     ${opt(`/cram/${id}/speed`, "o-speed", "⏱", "Speed round", best ? `60 seconds. Beat your best: ${best}` : "60 seconds. As many as you can")}
   </div>`;
 });
 
 // ---------- cram: rapid fire, speed round, missed words (one subject at a time) ----------
-route(/^\/cram\/([\w-]+)\/(rapid|speed|missed|tricky)$/, async (id, mode) => {
+route(/^\/cram\/([\w-]+)\/(rapid|speed|missed|tricky|new)$/, async (id, mode) => {
   setCurClass(id);
   let d;
   try { d = await loadCourse(id); } catch (e) { toast(e.message); return go("/"); }
@@ -1572,10 +1586,12 @@ route(/^\/cram\/([\w-]+)\/(rapid|speed|missed|tricky)$/, async (id, mode) => {
   const weight = (k) => (missed0.includes(k.id) ? -2 : isTricky(d.progress[k.id]) ? -1 : isLearned(d, k) ? d.progress[k.id].box || 0 : 9);
   let pool = mode === "missed" ? shuffle(d.cards.filter((k) => missed0.includes(k.id)))
     : mode === "tricky" ? shuffle(d.cards.filter((k) => isTricky(d.progress[k.id])))
+    // New words: ones you haven't learned yet, newest notes first.
+    : mode === "new" ? d.cards.filter((k) => !isLearned(d, k)).sort((a, b) => (b.added_day || "").localeCompare(a.added_day || ""))
     : shuffle([...d.cards]).sort((a, b) => weight(a) - weight(b));
-  if (!pool.length) { toast(mode === "missed" ? "No missed words in this subject. Nice." : mode === "tricky" ? "No tricky words yet. Nice." : "This subject has no words yet."); return go(`/c/${id}`); }
-  const ROUND = mode === "rapid" ? Math.min(25, pool.length) : mode === "missed" || mode === "tricky" ? Math.min(30, pool.length) : Infinity;
-  const SECS = 60, title = { rapid: "⚡ Rapid fire", speed: "⏱ Speed round", missed: "🎯 Missed words", tricky: "🧠 Tricky words" }[mode];
+  if (!pool.length) { toast(mode === "missed" ? "No missed words in this subject. Nice." : mode === "tricky" ? "No tricky words yet. Nice." : mode === "new" ? "No new words left. You've learned them all." : "This subject has no words yet."); return go(`/c/${id}`); }
+  const ROUND = mode === "rapid" ? Math.min(25, pool.length) : mode === "missed" || mode === "tricky" || mode === "new" ? Math.min(30, pool.length) : Infinity;
+  const SECS = 60, title = { rapid: "⚡ Rapid fire", speed: "⏱ Speed round", missed: "🎯 Missed words", tricky: "🧠 Tricky words", new: "🆕 New words" }[mode];
   const S = { i: 0, right: 0, asked: 0, combo: 0, best: 0, xp: 0, wrong: new Set(), fixed: new Set(), again: new Set(), over: false, t0: 0, saved: false, cardSeen: {}, tries: {}, lastOk: {} };
   let queue = pool.slice(0, ROUND === Infinity ? pool.length : ROUND), timer = null;
   const ask = (k) => (isPair(k) ? pairQ(d, k) : [meaningQ, termQ, tfQ][(Math.random() * 3) | 0](d, k));
@@ -1585,7 +1601,7 @@ route(/^\/cram\/([\w-]+)\/(rapid|speed|missed|tricky)$/, async (id, mode) => {
     if (S.i >= queue.length) { if (mode === "speed") { queue = queue.concat(shuffle([...pool])); } else return finish(); }
     const k = queue[S.i];
     // Missed-words drill: read the card first, then answer.
-    if (mode === "missed" && !S.cardSeen[S.i]) {
+    if ((mode === "missed" || mode === "new") && !S.cardSeen[S.i]) {
       app.innerHTML = `<div class="sess"><div class="sesstop"><button class="iconbtn" id="x" aria-label="Stop">✕</button>
         <div class="bar"><i style="width:${(S.i / queue.length) * 100}%"></i></div><span class="combo">${S.i + 1}/${queue.length}</span></div>
         ${classTag(d.course)}<div class="kicker">${title} · ${S.tries[k.id] ? "one more look" : "read it, then answer"}</div>
@@ -1623,14 +1639,14 @@ route(/^\/cram\/([\w-]+)\/(rapid|speed|missed|tricky)$/, async (id, mode) => {
       S.combo = 0; S.wrong.add(k.id); S.fixed.delete(k.id); if (btn) { chime("bad"); buzz([30, 40, 30]); }
       // Missed-words drill: a miss comes back (card first) until you get it right, up to 4 more times.
       S.tries[k.id] = (S.tries[k.id] || 0) + 1;
-      if (mode === "missed" && S.tries[k.id] <= 4) queue.push(k);
+      if ((mode === "missed" || mode === "new") && S.tries[k.id] <= 4) queue.push(k);
     }
     const nextQ = () => { S.i++; draw(); };
     if (mode === "speed") return setTimeout(nextQ, ok ? 250 : 900);
     if (ok) return setTimeout(nextQ, 550);
     const parts = isPair(k) ? k.parts.map((p) => `<p class="small"><b>${esc(p.term)}</b>: ${esc(p.simple)}</p>`).join("") : `<p><b>${esc(k.term)}</b>: ${esc(k.simple)}</p>`;
     $("fb").innerHTML = `<div class="feedback no"><h3>${btn ? "Not quite" : "Here it is"}</h3>${parts}${k.confuse ? `<p class="small">${esc(k.confuse)}</p>` : ""}
-      <p class="small muted">${mode === "missed" ? (S.tries[k.id] <= 4 ? "You'll see the card again, then it comes back until you get it." : "Still on your missed list. We'll keep drilling it next time.") : "Saved to your missed words."}</p>
+      <p class="small muted">${mode === "missed" || mode === "new" ? (S.tries[k.id] <= 4 ? "You'll see the card again, then it comes back until you get it." : "Still on your missed list. We'll keep drilling it next time.") : "Saved to your missed words."}</p>
       <button class="btn ghost block" id="seecard">📖 See the card</button><button class="btn bad block" id="cont">Next</button></div>`;
     $("seecard").onclick = () => cardSheet(k);
     const fb = app.querySelector(".feedback"); app.querySelector(".sess").style.paddingBottom = fb.offsetHeight + 16 + "px";
@@ -1643,18 +1659,20 @@ route(/^\/cram\/([\w-]+)\/(rapid|speed|missed|tricky)$/, async (id, mode) => {
     let fixed = [...S.fixed].filter((x) => missed0.includes(x)), stillWrong = [...S.wrong];
     // Missed-words drill: a word you finally got right (after seeing its card again) comes off the list.
     // It stays "tricky" for good, so it still comes back more often in reviews.
-    if (mode === "missed") { fixed = Object.keys(S.lastOk).filter((x) => S.lastOk[x]); stillWrong = Object.keys(S.lastOk).filter((x) => !S.lastOk[x]); }
+    if (mode === "missed" || mode === "new") { fixed = Object.keys(S.lastOk).filter((x) => S.lastOk[x]); stillWrong = Object.keys(S.lastOk).filter((x) => !S.lastOk[x]); }
     await saveMissed(d, stillWrong, fixed);
     let newBest = false;
     if (mode === "speed") { const prev = store.get("sm-speed-" + id, 0); if (S.right > prev) { store.set("sm-speed-" + id, S.right); newBest = prev > 0; } }
     // Words you already learned and missed come up in reviews sooner. Right answers don't change your schedule.
-    const results = [...S.wrong].filter((cid) => isLearned(d, { id: cid })).map((card_id) => ({ card_id, ok: false, mode: "review" }));
+    // New words drill: every word you went through now counts as learned (right or wrong), so it joins reviews and Rapid fire.
+    const results = mode === "new" ? Object.entries(S.lastOk).map(([card_id, ok]) => ({ card_id, ok, mode: "learn" }))
+      : [...S.wrong].filter((cid) => isLearned(d, { id: cid })).map((card_id) => ({ card_id, ok: false, mode: "review" }));
     await saveRound({ course_id: id, kind: "review", results, xp: S.xp, counts: S.asked >= 5 });
     const nowMissed = missedList(d).length, acc = Math.round((S.right / S.asked) * 100);
     app.innerHTML = `<div class="sess"><div class="cele">
       <div class="big-emoji">${newBest ? "🏆" : mode === "speed" ? "⏱" : acc >= 80 ? "🎯" : "💪"}</div>
       <h1>${mode === "speed" ? (newBest ? `New best: ${S.right}!` : `${S.right} right in ${SECS} seconds`) : `${S.right} of ${S.asked} right`}</h1>
-      <p class="muted">${mode === "speed" ? `Best: ${store.get("sm-speed-" + id, 0)}. ` : ""}${stillWrong.length ? `${plural(stillWrong.length, "word")} ${mode === "missed" ? "still on" : "saved to"} your missed words. ` : "Nothing missed. "}${fixed.length ? `${plural(fixed.length, "word")} fixed and taken off the list.` : ""}</p>
+      <p class="muted">${mode === "speed" ? `Best: ${store.get("sm-speed-" + id, 0)}. ` : ""}${mode === "new" ? `${plural(Object.keys(S.lastOk).length, "new word")} learned. ` : ""}${stillWrong.length ? `${plural(stillWrong.length, "word")} ${mode === "missed" ? "still on" : "saved to"} your missed words. ` : "Nothing missed. "}${fixed.length ? `${plural(fixed.length, "word")} fixed and taken off the list.` : ""}</p>
       <div class="tiles"><div class="tile xp"><b>${S.xp}</b><span>XP</span></div><div class="tile acc"><b>${acc}%</b><span>Correct</span></div><div class="tile fl"><b>${nowMissed}</b><span>Missed list</span></div></div>
       </div><div class="footbtn stack">
         ${nowMissed ? `<a class="btn primary block" href="#/cram/${id}/missed" id="again-missed">Drill my ${plural(nowMissed, "missed word")}</a>` : ""}
