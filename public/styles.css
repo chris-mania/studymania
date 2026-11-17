@@ -473,3 +473,14 @@ details summary{list-style:revert}
 /* every pop-up can scroll when its content is tall (long cards, word lists) */
 .sheet-in{overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
 .sheet-in:has(> .scroll){overflow:hidden}
+/* Falling Words */
+.lives{display:inline-flex;gap:5px;align-items:center}
+.lives i{width:10px;height:10px;border-radius:50%;background:var(--bad)}
+.lives i.off{background:var(--line)}
+.arena{position:relative;height:300px;border:2px solid var(--line);border-radius:18px;background:linear-gradient(var(--surface),var(--bg));overflow:hidden}
+.floor{position:absolute;left:0;right:0;bottom:0;height:4px;background:var(--bad);opacity:.7}
+.drop{position:absolute;left:12px;right:12px;top:0;background:var(--raised);border:2px solid var(--line);border-radius:14px;padding:12px 14px;font-size:16px;line-height:1.45;will-change:transform}
+.drop.ok{border-color:var(--good);background:var(--good-soft)} .drop.no{border-color:var(--bad);background:var(--bad-soft)}
+.gopts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:12px}
+.gopt{border:2px solid var(--line);background:var(--surface);color:var(--fg);border-radius:12px;padding:12px;font-weight:700;font-size:14px;text-align:left;line-height:1.3;min-height:52px;cursor:pointer}
+.gopt.right{border-color:var(--good);background:var(--good-soft)} .gopt.wrong{border-color:var(--bad);background:var(--bad-soft)}

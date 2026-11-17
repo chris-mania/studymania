@@ -1062,7 +1062,7 @@ route(/^\/c\/([\w-]+)$/, async (id) => {
         <div><div class="kicker">Cram & review</div><p class="muted small" style="margin-top:2px">Only ${esc(c.name)} words. Anything you miss gets saved to your missed words.</p></div>
         <div class="cramgrid">
           <a class="cramtile" href="#/cram/${c.id}/rapid"><i>⚡</i><b>Rapid fire</b><span>Every word, weakest first</span></a>
-          <a class="cramtile" href="#/games/${c.id}"><i>🎮</i><b>Games</b><span>Match Rush · Sort It · True/False Blitz</span></a>
+          <a class="cramtile" href="#/games/${c.id}"><i>🎮</i><b>Games</b><span>Falling Words · Match Rush · Sort It · T/F Blitz</span></a>
           <a class="cramtile ${missed ? "hot" : "off"}" href="#/cram/${c.id}/missed"><i>🎯</i><b>Missed words</b><span>${missed ? `${missed} to fix` : "None yet"}</span></a>
           <button class="cramtile ${due ? "" : "off"}" id="c-review"><i>🔁</i><b>Review</b><span>${due ? `${due} due` : "Nothing due"}</span></button>
           <button class="cramtile" id="c-exam"><i>📝</i><b>Practice exam</b><span>Like the real test</span></button>
@@ -1597,7 +1597,7 @@ route(/^\/study\/([\w-]+)$/, (id) => {
     ${c.missed ? opt(`/cram/${id}/missed`, "o-miss", "🎯", "Fix missed words", "Everything you got wrong, until you get it right", c.missed) : ""}
     ${c.tricky ? opt(`/cram/${id}/tricky`, "o-tricky", "🧠", "Tricky words", "Every word you've missed before, even once. They also come back more often in reviews.", c.tricky) : ""}
     ${opt(`/add/${id}/cram`, "o-add", "📥", "Add last-minute notes", "Forgot some notes? Short-on-time version: only what's likely on the test, then cram it right away")}
-    ${opt(`/games/${id}`, "o-speed", "🎮", "Games", "Match Rush, Sort It and True or False Blitz. A mix of your weak words and all the rest")}
+    ${opt(`/games/${id}`, "o-speed", "🎮", "Games", "Falling Words, Match Rush, Sort It and True or False Blitz. A mix of your weak words and all the rest")}
   </div>`;
 });
 
@@ -1806,6 +1806,7 @@ route(/^\/cram\/([\w-]+)\/(rapid|speed|missed|tricky|new)$/, async (id, mode) =>
 
 // ---------- Games (one class at a time): Match Rush, Sort It, True or False Blitz ----------
 const GAMES = [
+  ["fall", "Falling Words", "A meaning falls from the top. Tap the right word before it hits the floor. 3 lives, and it speeds up as you go.", "pts"],
   ["match", "Match Rush", "Beat the clock. Match terms to meanings. Every cleared board adds 8 seconds, every wrong pair costs 3.", "pairs"],
   ["sort", "Sort It", "The look-alike stuff from your \"A vs B\" cards. Sort each example into the right term.", "%"],
   ["tf", "True or False Blitz", "60 seconds. Does this term mean this? Tap, or use the arrow keys. Wrong answers cost a point.", "pts"],
@@ -1820,10 +1821,10 @@ route(/^\/games\/([\w-]+)$/, async (id) => {
     <div>${classTag(d.course)}<div class="kicker" style="color:var(--rev)">Games</div><h1 style="margin-top:4px">Learn it by playing</h1>
     <p class="muted">Mostly your weak words, mixed with all the rest. Anything you miss goes on your missed words.</p></div>
     <div class="ggrid">${GAMES.map(([k, n, desc, u]) => { const off = (k === "sort" && !sets.length) || (k !== "sort" && d.cards.length < 4);
-      return `<a class="gtile ${off ? "off" : ""}" href="${off ? "#/games/" + id : `#/game/${id}/${k}`}"><span class="gico" aria-hidden="true">${{ match: "🧩", sort: "🗂", tf: "⚡" }[k]}</span><b>${n}</b><span>${off ? (k === "sort" ? "Needs \"A vs B\" cards in this class." : "Needs at least 4 words.") : desc}</span><span class="best">${best(k) != null ? `Best: ${best(k)} ${u}` : "Not played yet"}</span></a>`; }).join("")}</div>
+      return `<a class="gtile ${off ? "off" : ""}" href="${off ? "#/games/" + id : `#/game/${id}/${k}`}"><span class="gico" aria-hidden="true">${{ fall: "🌧", match: "🧩", sort: "🗂", tf: "⚡" }[k]}</span><b>${n}</b><span>${off ? (k === "sort" ? "Needs \"A vs B\" cards in this class." : "Needs at least 4 words.") : desc}</span><span class="best">${best(k) != null ? `Best: ${best(k)} ${u}` : "Not played yet"}</span></a>`; }).join("")}</div>
   </div>`;
 });
-route(/^\/game\/([\w-]+)\/(match|sort|tf)$/, async (id, kind) => {
+route(/^\/game\/([\w-]+)\/(fall|match|sort|tf)$/, async (id, kind) => {
   setCurClass(id);
   let d;
   try { d = await loadCourse(id); } catch (e) { toast(e.message); return go("/"); }
@@ -1851,6 +1852,47 @@ route(/^\/game\/([\w-]+)\/(match|sort|tf)$/, async (id, kind) => {
     if (isBest && prev != null) confetti(1); chime("win");
     $("again").onclick = () => render();
   };
+
+  if (kind === "fall") {
+    // Falling Words: a meaning falls; tap the right word before it hits the floor. 3 lives, speeds up.
+    const words = d.cards.filter((k) => !isPair(k));
+    let bag = [];
+    Object.assign(G, { score: 0, lives: 3, speed: 16, y: 0, last: 0, pause: false, cur: null, opts: [] });
+    app.innerHTML = hud(`<span>Score <b id="fs">0</b></span><span class="lives" id="fl"></span>`) + `<div class="arena" id="arena"><div class="drop" id="drop"></div><div class="floor"></div></div><div class="gopts" id="fo"></div></div>`;
+    const drop = $("drop"), arena = $("arena"), fo = $("fo");
+    const lives = () => { $("fl").innerHTML = [0, 1, 2].map((i) => `<i class="${i < G.lives ? "" : "off"}"></i>`).join(""); }; lives();
+    const maxY = () => arena.clientHeight - drop.offsetHeight - 8;
+    const spawn = () => {
+      if (!alive()) return;
+      if (!bag.length) bag = mixPick(d, words.length, words).filter((k) => k !== G.cur);
+      const k = bag.shift() || words[0]; G.cur = k;
+      G.opts = shuffle([k, ...distract(k, Math.min(3, words.length - 1))]);
+      drop.className = "drop"; drop.textContent = maskTerm(k.simple, k); G.y = 0; G.pause = false; drop.style.transform = "translateY(0px)";
+      fo.innerHTML = G.opts.map((o, i) => `<button class="gopt" data-o="${i}">${esc(o.term)}</button>`).join("");
+    };
+    const lose = (clicked) => {
+      G.pause = true; G.lives--; lives(); G.missed.push(G.cur); chime("bad"); buzz([30, 40, 30]);
+      drop.className = "drop no"; drop.innerHTML = `<b>${esc(G.cur.term)}</b> · ${esc(G.cur.simple)}`;
+      fo.querySelectorAll(".gopt").forEach((b, i) => { if (G.opts[i] === G.cur) b.classList.add("right"); else if (i === clicked) b.classList.add("wrong"); b.disabled = true; });
+      G.to = setTimeout(() => { if (!alive()) return; G.lives <= 0 ? over(G.score) : spawn(); }, 1700);
+    };
+    fo.onclick = (e) => {
+      const b = e.target.closest(".gopt"); if (!b || G.pause || G.dead) return;
+      const i = +b.dataset.o;
+      if (G.opts[i] === G.cur) {
+        G.pause = true; G.score += 10 + Math.round(10 * (1 - G.y / Math.max(1, maxY()))); $("fs").textContent = G.score;
+        G.speed = Math.min(60, G.speed + 1.6); G.right.push(G.cur); b.classList.add("right"); drop.className = "drop ok"; chime("good"); buzz(8);
+        G.to = setTimeout(spawn, 420);
+      } else lose(i);
+    };
+    const tick = (t) => {
+      if (!alive()) return;
+      if (!G.last) G.last = t; const dt = Math.min(0.1, (t - G.last) / 1000); G.last = t;
+      if (!G.pause) { G.y += G.speed * dt; if (G.y >= maxY()) { G.y = maxY(); lose(-1); } drop.style.transform = `translateY(${G.y}px)`; }
+      G.raf = requestAnimationFrame(tick);
+    };
+    spawn(); G.raf = requestAnimationFrame(tick);
+  }
 
   if (kind === "match") {
     // Match Rush: 5 terms + their meanings per board. 45 seconds, +8 per cleared board, -3 per wrong pair.
@@ -1960,6 +2002,7 @@ route(/^\/exam\/([\w-]+)$/, async (id) => {
   const learnedTopics = new Set(d.cards.filter((k) => isLearned(d, k)).map((k) => k.topic));
   const topics = [...new Set(d.cards.map((k) => k.topic))];
   const S = { count: 20, from: learnedTopics.size ? "learned" : "all", timer: false, topics: new Set(topics) };
+  const coverKey = "sm-examcov-" + id, examCovered = () => store.get(coverKey, []);
   const poolFor = () => {
     const okTopic = (t) => S.topics.has(t) && (S.from === "all" || learnedTopics.has(t));
     return { cards: d.cards.filter((k) => okTopic(k.topic) && (S.from === "all" || isLearned(d, k))), qs: d.questions.filter((q) => okTopic(q.topic)) };
@@ -1976,6 +2019,8 @@ route(/^\/exam\/([\w-]+)$/, async (id) => {
         <details><summary class="small" style="font-weight:700;cursor:pointer">Topics (${S.topics.size} of ${topics.length})</summary>
           <div class="stack" style="gap:6px;margin-top:10px">${topics.map((t) => `<label class="checkrow"><input type="checkbox" data-topic="${esc(t)}" ${S.topics.has(t) ? "checked" : ""}> ${esc(t)}</label>`).join("")}</div></details>
         <p class="muted small">${avail ? `${avail} possible questions${d.questions.length ? `, including ${p.qs.length} exam-style ones from your AI` : ""}.` : "Learn a lesson first, or switch to Everything."}</p>
+        ${avail ? (() => { const cov = new Set(examCovered()), fresh = p.cards.filter((k) => !cov.has(k.id)).length, miss = missedList(d).filter((x) => p.cards.some((k) => k.id === x)).length;
+          return `<p class="small" style="margin:0">Each word comes up once. First: ${[miss ? `<b>${plural(miss, "missed word")}</b>` : "", fresh < p.cards.length && fresh ? `<b>${plural(fresh, "word")}</b> that ${fresh === 1 ? "hasn't" : "haven't"} been in a practice exam yet` : ""].filter(Boolean).join(", then ") || "a fresh mix of every word"}.${p.cards.length > S.count ? ` Words that don't fit this time go first next time.` : ""}</p>`; })() : ""}
         <button class="btn primary block" id="e-go" ${avail ? "" : "disabled"}>Start exam</button>
       </div></div>`;
     app.querySelectorAll("[data-n]").forEach((b) => (b.onclick = () => { S.count = +b.dataset.n; setup(); }));
@@ -1986,9 +2031,19 @@ route(/^\/exam\/([\w-]+)$/, async (id) => {
   };
   const run = (p) => {
     const n = Math.min(S.count, p.cards.length + p.qs.length);
-    const ai = shuffle([...p.qs]).slice(0, Math.min(p.qs.length, Math.ceil(n * 0.5))).map(aiQ);
+    // Cover every word if it fits: AI exam questions take only ~20% of the spots (more if there aren't enough words).
+    const aiN = Math.min(p.qs.length, Math.max(n - p.cards.length, Math.round(n * 0.2)));
+    const aiPicked = shuffle([...p.qs]).slice(0, aiN), ai = aiPicked.map(aiQ);
+    const aiAns = new Set(aiPicked.map((q) => String(q.choices?.[q.answer] ?? q.answer ?? "").toLowerCase()));
     d.seen = S.from === "all" ? null : new Set(d.cards.filter((k) => isLearned(d, k)).map((k) => k.id));
-    const cardQs = shuffle([...p.cards]).slice(0, n - ai.length).map((k, j) => (isPair(k) ? pairQ(d, k) : [meaningQ, exampleQ, termQ, tfQ][j % 4](d, k)));
+    // Each word once, in this order: missed words, then words that haven't been in a practice exam yet, then the rest.
+    // Words already tested by one of the AI questions go last, so the exam doesn't repeat itself.
+    const missed = new Set(missedList(d)), covered = new Set(examCovered()), rank = (k) => (missed.has(k.id) ? 0 : !covered.has(k.id) ? 1 : 2) + (aiAns.has(k.term.toLowerCase()) ? 3 : 0);
+    const picked = shuffle([...p.cards]).sort((a, b) => rank(a) - rank(b)).slice(0, n - ai.length);
+    // Remember which words were covered; once every word has had a turn, start the rotation over.
+    const nowCovered = new Set([...covered, ...picked.map((k) => k.id)]);
+    store.set(coverKey, p.cards.every((k) => nowCovered.has(k.id)) ? [] : [...nowCovered]);
+    const cardQs = picked.map((k, j) => (isPair(k) ? pairQ(d, k) : [meaningQ, exampleQ, termQ, tfQ][j % 4](d, k)));
     const qs = shuffle(ai.concat(cardQs)), answers = new Array(qs.length).fill(null);
     const endAt = S.timer ? Date.now() + qs.length * 60e3 : 0;
     let i = 0, timerId = null;
