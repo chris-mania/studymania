@@ -1062,7 +1062,7 @@ route(/^\/c\/([\w-]+)$/, async (id) => {
         <div><div class="kicker">Cram & review</div><p class="muted small" style="margin-top:2px">Only ${esc(c.name)} words. Anything you miss gets saved to your missed words.</p></div>
         <div class="cramgrid">
           <a class="cramtile" href="#/cram/${c.id}/rapid"><i>⚡</i><b>Rapid fire</b><span>Every word, weakest first</span></a>
-          <a class="cramtile" href="#/cram/${c.id}/speed"><i>⏱</i><b>Speed round</b><span>60 seconds${store.get("sm-speed-" + c.id, 0) ? ` · best ${store.get("sm-speed-" + c.id, 0)}` : ""}</span></a>
+          <a class="cramtile" href="#/games/${c.id}"><i>🎮</i><b>Games</b><span>Match Rush · Sort It · True/False Blitz</span></a>
           <a class="cramtile ${missed ? "hot" : "off"}" href="#/cram/${c.id}/missed"><i>🎯</i><b>Missed words</b><span>${missed ? `${missed} to fix` : "None yet"}</span></a>
           <button class="cramtile ${due ? "" : "off"}" id="c-review"><i>🔁</i><b>Review</b><span>${due ? `${due} due` : "Nothing due"}</span></button>
           <button class="cramtile" id="c-exam"><i>📝</i><b>Practice exam</b><span>Like the real test</span></button>
@@ -1553,6 +1553,20 @@ function celebrate(before, { xp, accuracy, best, text, title, after }) {
   if (revC) $("go-rev").onclick = () => go(`/s/${revC.id}/review`);
 }
 
+// Mix of words for Rapid fire and games: about 60% from your weak words (missed, tricky, shaky, due),
+// 40% from everything else, so you keep seeing ALL your words, not just the hard ones.
+function mixPick(d, n, list = d.cards) {
+  const T = todayStr(), missed = new Set(missedList(d));
+  const weak = (k) => { const p = d.progress[k.id]; return missed.has(k.id) || isTricky(p) || (p?.learned_at && ((p.box || 0) <= 1 || (p.due && p.due <= T))); };
+  const w = shuffle(list.filter(weak)), r = shuffle(list.filter((k) => !weak(k))), out = [];
+  while (out.length < n && (w.length || r.length)) out.push((w.length && (Math.random() < 0.6 || !r.length) ? w : r).shift());
+  return out;
+}
+const maskTerm = (text, k) => {
+  const names = [k.term, k.full].filter(Boolean).map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  return String(text || "").replace(new RegExp(`\\b(${names.join("|")})\\b`, "gi"), "____");
+};
+
 // ---------- Study & Cram: pick the class, then what you need ----------
 route(/^\/study$/, () => {
   const cs = ME.courses.filter((c) => c.total).sort((a, b) => (a.exam_date || "9999").localeCompare(b.exam_date || "9999"));
@@ -1576,13 +1590,13 @@ route(/^\/study\/([\w-]+)$/, (id) => {
   app.innerHTML = `${topbar(multi ? "/study" : "/")}<div class="stack">
     <div>${classTag(c)}<div class="kicker" style="color:var(--rev)">Study &amp; Cram${multi ? " · 2 of 2" : ""}</div><h1 style="margin-top:4px">What do you need?</h1></div>
     ${c.total - c.learned > 0 && ((n !== null && n >= 0 && n <= 2) || c.plan.phase === "review") ? opt(`/cram/${id}/new`, "o-new hot", "🆕", "New words", "Words you haven't learned yet, newest first. Card first, then a quick quiz", c.total - c.learned) : ""}
-    ${opt(`/cram/${id}/rapid`, "o-cram" + (n !== null && n <= 7 ? " hot" : ""), "⚡", n !== null && n >= 0 && n <= 7 ? `Exam ${n ? `in ${plural(n, "day")}` : "today"}? Cram` : "Cram", "Rapid fire through every word, weakest first")}
+    ${opt(`/cram/${id}/rapid`, "o-cram" + (n !== null && n <= 7 ? " hot" : ""), "⚡", n !== null && n >= 0 && n <= 7 ? `Exam ${n ? `in ${plural(n, "day")}` : "today"}? Cram` : "Cram", "Rapid fire: mostly your weak words, mixed with all the rest")}
     ${opt(c.due ? `/s/${id}/review` : `/cram/${id}/rapid`, "o-rev", "🔁", "Review", c.due ? "Words that are due so you don't forget them" : "Nothing due right now. This opens rapid fire instead", c.due || "")}
     ${opt(`/exam/${id}`, "o-exam", "📝", "Practice exam", "Like the real test, with a score")}
     ${c.missed ? opt(`/cram/${id}/missed`, "o-miss", "🎯", "Fix missed words", "Everything you got wrong, until you get it right", c.missed) : ""}
     ${c.tricky ? opt(`/cram/${id}/tricky`, "o-tricky", "🧠", "Tricky words", "Every word you've missed before, even once. They also come back more often in reviews.", c.tricky) : ""}
     ${opt(`/add/${id}/cram`, "o-add", "📥", "Add last-minute notes", "Forgot some notes? Short-on-time version: only what's likely on the test, then cram it right away")}
-    ${opt(`/cram/${id}/speed`, "o-speed", "⏱", "Speed round", best ? `60 seconds. Beat your best: ${best}` : "60 seconds. As many as you can")}
+    ${opt(`/games/${id}`, "o-speed", "🎮", "Games", "Match Rush, Sort It and True or False Blitz. A mix of your weak words and all the rest")}
   </div>`;
 });
 
@@ -1599,6 +1613,7 @@ route(/^\/cram\/([\w-]+)\/(rapid|speed|missed|tricky|new)$/, async (id, mode) =>
     : mode === "tricky" ? shuffle(d.cards.filter((k) => isTricky(d.progress[k.id])))
     // New words: ones you haven't learned yet, newest notes first.
     : mode === "new" ? d.cards.filter((k) => !isLearned(d, k)).sort((a, b) => (b.added_day || "").localeCompare(a.added_day || ""))
+    : mode === "rapid" ? mixPick(d, Math.min(25, d.cards.length))
     : shuffle([...d.cards]).sort((a, b) => weight(a) - weight(b));
   if (!pool.length) { toast(mode === "missed" ? "No missed words in this subject. Nice." : mode === "tricky" ? "No tricky words yet. Nice." : mode === "new" ? "No new words left. You've learned them all." : "This subject has no words yet."); return go(`/c/${id}`); }
   const ROUND = mode === "rapid" ? Math.min(25, pool.length) : mode === "missed" || mode === "tricky" || mode === "new" ? Math.min(30, pool.length) : Infinity;
@@ -1786,6 +1801,154 @@ route(/^\/cram\/([\w-]+)\/(rapid|speed|missed|tricky|new)$/, async (id, mode) =>
     }, 250);
   }
   draw();
+});
+
+// ---------- Games (one class at a time): Match Rush, Sort It, True or False Blitz ----------
+const GAMES = [
+  ["match", "Match Rush", "Beat the clock. Match terms to meanings. Every cleared board adds 8 seconds, every wrong pair costs 3.", "pairs"],
+  ["sort", "Sort It", "The look-alike stuff from your \"A vs B\" cards. Sort each example into the right term.", "%"],
+  ["tf", "True or False Blitz", "60 seconds. Does this term mean this? Tap, or use the arrow keys. Wrong answers cost a point.", "pts"],
+];
+// Sort It sets come from "A vs B" cards: each term is a bucket, its examples/situations/meanings are the cards to sort.
+const sortSets = (d) => d.cards.filter(isPair).map((k) => ({ k, name: k.term, b: k.parts.filter((p) => p.term).map((p) => ({ term: p.term, items: [p.scenario, p.example, p.simple].filter(Boolean).map((t) => maskNames(t, k)) })) })).filter((s) => s.b.length >= 2);
+route(/^\/games\/([\w-]+)$/, async (id) => {
+  let d;
+  try { d = await loadCourse(id); } catch (e) { toast(e.message); return go("/"); }
+  const best = (g) => store.get(`sm-game-${g}-${id}`, null), sets = sortSets(d);
+  app.innerHTML = `${topbar(`/study/${id}`)}<div class="stack">
+    <div>${classTag(d.course)}<div class="kicker" style="color:var(--rev)">Games</div><h1 style="margin-top:4px">Learn it by playing</h1>
+    <p class="muted">Mostly your weak words, mixed with all the rest. Anything you miss goes on your missed words.</p></div>
+    <div class="ggrid">${GAMES.map(([k, n, desc, u]) => { const off = (k === "sort" && !sets.length) || (k !== "sort" && d.cards.length < 4);
+      return `<a class="gtile ${off ? "off" : ""}" href="${off ? "#/games/" + id : `#/game/${id}/${k}`}"><span class="gico" aria-hidden="true">${{ match: "🧩", sort: "🗂", tf: "⚡" }[k]}</span><b>${n}</b><span>${off ? (k === "sort" ? "Needs \"A vs B\" cards in this class." : "Needs at least 4 words.") : desc}</span><span class="best">${best(k) != null ? `Best: ${best(k)} ${u}` : "Not played yet"}</span></a>`; }).join("")}</div>
+  </div>`;
+});
+route(/^\/game\/([\w-]+)\/(match|sort|tf)$/, async (id, kind) => {
+  setCurClass(id);
+  let d;
+  try { d = await loadCourse(id); } catch (e) { toast(e.message); return go("/"); }
+  const G = { dead: false, missed: [], right: [], raf: 0, to: 0 };
+  const stop = () => { G.dead = true; cancelAnimationFrame(G.raf); clearTimeout(G.to); if (G.key) document.removeEventListener("keydown", G.key); };
+  const here = location.hash;
+  const alive = () => { if (location.hash !== here) { stop(); return false; } return !G.dead; };
+  const meta = GAMES.find((g) => g[0] === kind);
+  const hud = (right) => `<div class="sess"><div class="ghud"><a class="btn ghost small" href="#/games/${id}" id="gback">‹ Games</a><div class="hud">${right}</div></div>${classTag(d.course)}<div class="kicker">${meta[1]}</div>`;
+  const distract = (k, n) => shuffle(d.cards.filter((x) => x.id !== k.id && !isPair(x))).slice(0, n);
+  const over = async (score, higherBetter = true) => {
+    stop();
+    const key = `sm-game-${kind}-${id}`, prev = store.get(key, null), isBest = prev == null || (higherBetter ? score > prev : score < prev);
+    if (isBest) store.set(key, score);
+    const missIds = [...new Set(G.missed.map((k) => k.id))];
+    await saveMissed(d, missIds, []);
+    const results = missIds.filter((cid) => isLearned(d, { id: cid })).map((card_id) => ({ card_id, ok: false, mode: "review" }));
+    await saveRound({ course_id: id, kind: "review", results, xp: Math.max(0, Math.round(score)) * 2, counts: G.right.length + G.missed.length >= 5 });
+    const uniq = missIds.map((cid) => d.cards.find((k) => k.id === cid)).filter(Boolean);
+    app.innerHTML = `<div class="sess"><div class="cele">
+      <div class="big-emoji">${isBest && prev != null ? "🏆" : "🎮"}</div>
+      <h1>${score} ${meta[3]}</h1><p class="muted">${isBest && prev != null ? "New best!" : prev != null ? `Best: ${Math.max(prev, score)} ${meta[3]}` : "First game!"}</p>
+      ${uniq.length ? `<div class="stack" style="gap:8px;text-align:left;width:100%"><div class="kicker">Missed · saved to your missed words</div>${uniq.map((k) => `<div class="gmiss"><b>${esc(k.term)}</b><span>${esc(k.simple)}</span></div>`).join("")}</div>` : `<p class="muted">Nothing missed. Clean run.</p>`}
+      </div><div class="footbtn stack"><button class="btn primary block" id="again">Play again</button><a class="btn ghost block" href="#/games/${id}">Back to games</a></div></div>`;
+    if (isBest && prev != null) confetti(1); chime("win");
+    $("again").onclick = () => render();
+  };
+
+  if (kind === "match") {
+    // Match Rush: 5 terms + their meanings per board. 45 seconds, +8 per cleared board, -3 per wrong pair.
+    Object.assign(G, { left: 45, score: 0, sel: null, last: 0, tiles: [], done: 0 });
+    const words = d.cards.filter((k) => !isPair(k));
+    app.innerHTML = hud(`<span>Pairs <b id="ms">0</b></span><span><b id="mt">45</b>s</span>`) + `<div class="gtimer"><i id="mbar" style="width:100%"></i></div><div class="mgrid" id="mg"></div></div>`;
+    const deal = () => {
+      const ts = mixPick(d, Math.min(5, words.length), words); G.done = 0; G.n = ts.length;
+      G.tiles = shuffle(ts.flatMap((k) => [{ k, side: "term", x: k.term }, { k, side: "def", x: maskTerm(k.simple, k) }]));
+      $("mg").innerHTML = G.tiles.map((t, i) => `<button class="mt ${t.side}" data-i="${i}">${esc(t.x)}</button>`).join("");
+    };
+    $("mg").onclick = (e) => {
+      const b = e.target.closest(".mt"); if (!b || G.dead || b.classList.contains("gone")) return;
+      const t = G.tiles[+b.dataset.i];
+      if (!G.sel) { G.sel = { b, t }; b.classList.add("sel"); return; }
+      if (G.sel.b === b) { b.classList.remove("sel"); G.sel = null; return; }
+      if (G.sel.t.side === t.side) { G.sel.b.classList.remove("sel"); G.sel = { b, t }; b.classList.add("sel"); return; }
+      const a = G.sel; G.sel = null; a.b.classList.remove("sel");
+      if (a.t.k.id === t.k.id) {
+        a.b.classList.add("gone"); b.classList.add("gone"); G.score++; G.done++; G.right.push(t.k); $("ms").textContent = G.score; chime("good"); buzz(8);
+        if (G.done === G.n) { G.left += 8; G.to = setTimeout(() => alive() && deal(), 250); }
+      } else {
+        G.left -= 3; G.missed.push((a.t.side === "term" ? a.t : t).k); chime("bad"); buzz([20, 30, 20]);
+        [a.b, b].forEach((el) => { el.classList.add("no", "shake"); setTimeout(() => el.classList.remove("no", "shake"), 420); });
+      }
+    };
+    const tick = (ts) => {
+      if (!alive()) return;
+      if (!G.last) G.last = ts; G.left -= Math.min(0.1, (ts - G.last) / 1000); G.last = ts;
+      const l = Math.max(0, G.left); $("mt").textContent = Math.ceil(l);
+      const bar = $("mbar"); bar.style.width = Math.min(100, (100 * l) / 45) + "%"; bar.className = l < 10 ? "low" : "";
+      if (l <= 0) return over(G.score);
+      G.raf = requestAnimationFrame(tick);
+    };
+    deal(); G.raf = requestAnimationFrame(tick);
+  }
+
+  if (kind === "sort") {
+    // Sort It: examples from your "A vs B" cards. 12 cards, mostly from your weak pair cards.
+    const sets = sortSets(d);
+    if (!sets.length) { toast("Sort It needs \"A vs B\" cards in this class."); return go(`/games/${id}`); }
+    const pickSets = mixPick(d, sets.length, sets.map((x) => x.k)).map((k) => sets.find((x) => x.k.id === k.id));
+    let items = shuffle(pickSets.flatMap((st) => st.b.flatMap((bk, j) => bk.items.map((x) => ({ x, st, j }))))).slice(0, 12);
+    Object.assign(G, { i: 0, score: 0, lock: false });
+    const next = () => {
+      if (!alive()) return;
+      if (G.i >= items.length) return over(Math.round((100 * G.score) / items.length));
+      const it = items[G.i];
+      app.innerHTML = hud(`<span>${G.i + 1} / ${items.length}</span><span>Right <b>${G.score}</b></span>`) + `
+        <p class="muted" style="margin:0">${esc(it.st.name)}</p>
+        <div class="sortcard" id="sc">${esc(it.x)}</div>
+        <div class="buckets">${it.st.b.map((bk, j) => `<button class="bucket" data-b="${j}">${esc(bk.term)}</button>`).join("")}</div>
+        <p class="small" id="sfb" style="min-height:22px"></p></div>`;
+      app.querySelectorAll("[data-b]").forEach((b) => (b.onclick = () => {
+        if (G.lock || G.dead) return; G.lock = true;
+        const ok = +b.dataset.b === it.j;
+        if (ok) { G.score++; G.right.push(it.st.k); $("sc").classList.add("ok"); chime("good"); }
+        else { G.missed.push(it.st.k); $("sc").classList.add("no"); $("sfb").innerHTML = `It's <b>${esc(it.st.b[it.j].term)}</b>.`; chime("bad"); }
+        G.to = setTimeout(() => { G.lock = false; G.i++; next(); }, ok ? 450 : 1400);
+      }));
+    };
+    next();
+  }
+
+  if (kind === "tf") {
+    // True or False Blitz: 60 seconds. Wrong answers cost a point.
+    const words = d.cards.filter((k) => !isPair(k));
+    let bag = [];
+    Object.assign(G, { score: 0, end: performance.now() + 60000, cur: null, truth: true, lock: false });
+    app.innerHTML = hud(`<span>Score <b id="bs">0</b></span><span><b id="bt">60</b>s</span>`) + `<div class="gtimer"><i id="bbar" style="width:100%"></i></div>
+      <div class="tfcard" id="tc"><div class="t" id="tt"></div><div class="dd" id="td"></div></div>
+      <div class="tfb"><button class="btn block" data-tf="0">False <kbd>←</kbd></button><button class="btn primary block" data-tf="1">True <kbd>→</kbd></button></div>
+      <p class="small" id="tfx" style="min-height:44px"></p></div>`;
+    const next = () => {
+      if (!bag.length) bag = mixPick(d, words.length, words);
+      G.cur = bag.shift(); G.truth = Math.random() < 0.5;
+      const other = distract(G.cur, 1)[0] || G.cur;
+      $("tt").textContent = G.cur.term; $("td").textContent = "means: " + maskTerm(G.truth ? G.cur.simple : other.simple, G.cur); $("tc").className = "tfcard";
+      if (!G.truth && other === G.cur) G.truth = true;
+    };
+    const ans = (v) => {
+      if (G.dead || G.lock) return; const ok = v === G.truth;
+      if (ok) { G.score++; G.right.push(G.cur); $("tfx").textContent = ""; chime("good"); }
+      else { G.score = Math.max(0, G.score - 1); G.missed.push(G.cur); $("tfx").innerHTML = `<b>${esc(G.cur.term)}</b> means: ${esc(G.cur.simple)}`; chime("bad"); }
+      $("bs").textContent = G.score; $("tc").className = "tfcard " + (ok ? "ok" : "no"); G.lock = true;
+      G.to = setTimeout(() => { G.lock = false; if (alive()) next(); }, ok ? 220 : 1100);
+    };
+    app.querySelectorAll("[data-tf]").forEach((b) => (b.onclick = () => ans(b.dataset.tf === "1")));
+    G.key = (e) => { if (e.key === "ArrowRight") { e.preventDefault(); ans(true); } if (e.key === "ArrowLeft") { e.preventDefault(); ans(false); } };
+    document.addEventListener("keydown", G.key);
+    const tick = () => {
+      if (!alive()) return;
+      const l = G.end - performance.now(); $("bt").textContent = Math.max(0, Math.ceil(l / 1000));
+      const bar = $("bbar"); bar.style.width = Math.max(0, l / 600) + "%"; bar.className = l < 10000 ? "low" : "";
+      if (l <= 0) return over(G.score);
+      G.raf = requestAnimationFrame(tick);
+    };
+    next(); tick();
+  }
 });
 
 // ---------- practice exam ----------
@@ -2006,7 +2169,7 @@ if ("serviceWorker" in navigator) {
     document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") reg.update().catch(() => {}); });
   }).catch(() => {});
   let hadController = !!navigator.serviceWorker.controller, pendingReload = false;
-  const safeToReload = () => !/^#\/(s|exam|add|cram|study)\//.test(location.hash) && !/^#\/add$/.test(location.hash);
+  const safeToReload = () => !/^#\/(s|exam|add|cram|study|game)\//.test(location.hash) && !/^#\/add$/.test(location.hash);
   navigator.serviceWorker.addEventListener("controllerchange", () => {
     if (!hadController) { hadController = true; return; } // first install, nothing to refresh
     if (safeToReload()) location.reload(); else pendingReload = true;
