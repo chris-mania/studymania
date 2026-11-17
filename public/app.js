@@ -1592,61 +1592,79 @@ route(/^\/cram\/([\w-]+)\/(rapid|speed|missed|tricky|new)$/, async (id, mode) =>
   if (!pool.length) { toast(mode === "missed" ? "No missed words in this subject. Nice." : mode === "tricky" ? "No tricky words yet. Nice." : mode === "new" ? "No new words left. You've learned them all." : "This subject has no words yet."); return go(`/c/${id}`); }
   const ROUND = mode === "rapid" ? Math.min(25, pool.length) : mode === "missed" || mode === "tricky" || mode === "new" ? Math.min(30, pool.length) : Infinity;
   const SECS = 60, title = { rapid: "⚡ Rapid fire", speed: "⏱ Speed round", missed: "🎯 Missed words", tricky: "🧠 Tricky words", new: "🆕 New words" }[mode];
-  const S = { i: 0, right: 0, asked: 0, combo: 0, best: 0, xp: 0, wrong: new Set(), fixed: new Set(), again: new Set(), over: false, t0: 0, saved: false, cardSeen: {}, tries: {}, lastOk: {} };
-  let queue = pool.slice(0, ROUND === Infinity ? pool.length : ROUND), timer = null;
-  const ask = (k) => (isPair(k) ? pairQ(d, k) : [meaningQ, termQ, tfQ][(Math.random() * 3) | 0](d, k));
+  const S = { i: 0, right: 0, asked: 0, combo: 0, best: 0, xp: 0, wrong: new Set(), fixed: new Set(), again: new Set(), over: false, t0: 0, saved: false, tries: {}, lastOk: {} };
+  // Missed / New / Tricky words go in stages, like lessons:
+  //   1) (read the card) a hard question  2) a few words later, a second hard question the other way
+  //   3) at the very end, a quick true or false. Miss any of them: the card comes back and that word starts over.
+  // Rapid fire and Speed round stay mixed and fast.
+  const staged = mode === "missed" || mode === "new" || mode === "tricky", cardFirst = mode === "missed" || mode === "new";
+  let queue = pool.slice(0, ROUND === Infinity ? pool.length : ROUND).map((k) => ({ k, st: staged ? 1 : 0 })), timer = null;
+  const ask = (it) => {
+    const k = it.k;
+    if (it.st === 1) return isPair(k) ? pairQ(d, k) : meaningQ(d, k);
+    if (it.st === 2) return isPair(k) ? pairQ(d, k, "meaning") : termQ(d, k);
+    if (it.st === 3) return isPair(k) ? pairQ(d, k) : tfQ(d, k);
+    return isPair(k) ? pairQ(d, k) : [meaningQ, termQ, tfQ][(Math.random() * 3) | 0](d, k);
+  };
+  const stageNote = (it) => (it.st === 1 ? (S.tries[it.k.id] ? "starting over" : "check") : it.st === 2 ? "one more time" : it.st === 3 ? "final check: true or false" : "");
 
   function draw() {
     if (S.over) return;
-    if (S.i >= queue.length) { if (mode === "speed") { queue = queue.concat(shuffle([...pool])); } else return finish(); }
-    const k = queue[S.i];
-    // Missed-words drill: read the card first, then answer.
-    if ((mode === "missed" || mode === "new") && !S.cardSeen[S.i]) {
+    if (S.i >= queue.length) { if (mode === "speed") { queue = queue.concat(shuffle([...pool]).map((k) => ({ k, st: 0 }))); } else return finish(); }
+    const it = queue[S.i], k = it.k;
+    // Missed / New words: read the card first, then answer.
+    if (cardFirst && it.st === 1 && !it.seen) {
       app.innerHTML = `<div class="sess"><div class="sesstop"><button class="iconbtn" id="x" aria-label="Stop">✕</button>
         <div class="bar"><i style="width:${(S.i / queue.length) * 100}%"></i></div><span class="combo">${S.i + 1}/${queue.length}</span></div>
         ${classTag(d.course)}<div class="kicker">${title} · ${S.tries[k.id] ? "one more look" : "read it, then answer"}</div>
         ${cardView(k)}<div class="footbtn"><button class="btn primary block" id="n">Test me</button></div></div>`;
       window.scrollTo(0, 0);
       $("x").onclick = () => finish(true);
-      $("n").onclick = () => { S.cardSeen[S.i] = true; draw(); };
+      $("n").onclick = () => { it.seen = true; draw(); };
       return;
     }
-    const q = ask(k);
+    const q = ask(it);
     const left = mode === "speed" ? Math.max(0, SECS - Math.floor((Date.now() - S.t0) / 1000)) : 0;
     const pct = mode === "speed" ? (left / SECS) * 100 : (S.i / queue.length) * 100;
     app.innerHTML = `<div class="sess"><div class="sesstop"><button class="iconbtn" id="x" aria-label="Stop">✕</button>
       <div class="bar ${mode === "speed" ? "timebar" : ""}"><i id="cbar" style="width:${pct}%"></i></div>
       <span class="combo" id="cnum">${mode === "speed" ? `${left}s` : `${S.i + 1}/${queue.length}`}</span></div>
-      ${classTag(d.course)}<div class="kicker">${title}${mode === "speed" ? ` · ${S.right} right` : S.combo >= 3 ? ` · 🔥${S.combo}` : ""}</div>
+      ${classTag(d.course)}<div class="kicker">${title}${staged ? ` · ${stageNote(it)}` : ""}${mode === "speed" ? ` · ${S.right} right` : S.combo >= 3 ? ` · 🔥${S.combo}` : ""}</div>
       <div class="qbody"><p class="prompt">${q.html}</p>
       <div class="opts">${q.opts.map((o, j) => `<button class="opt" data-j="${j}"><span class="k">${"ABCD"[j]}</span><span>${esc(o)}</span></button>`).join("")}</div>
       <button class="btn ghost idk" id="idk">${mode === "speed" ? "Skip" : "I don't know"}</button></div><div id="fb"></div></div>`;
     window.scrollTo(0, 0);
     $("x").onclick = () => finish(true);
     let done = false;
-    const pick = (btn) => { if (done || S.over) return; done = true; answer(k, q, btn); };
+    const pick = (btn) => { if (done || S.over) return; done = true; answer(it, q, btn); };
     app.querySelectorAll(".opt").forEach((b) => (b.onclick = () => pick(b)));
     $("idk").onclick = () => pick(null);
   }
-  function answer(k, q, btn) {
-    const ok = !!btn && q.opts[btn.dataset.j] === q.ans;
+  function answer(it, q, btn) {
+    const k = it.k, ok = !!btn && q.opts[btn.dataset.j] === q.ans;
     S.asked++;
     app.querySelectorAll(".opt").forEach((x) => { if (q.opts[x.dataset.j] === q.ans) x.classList.add("right"); else if (x !== btn) x.classList.add("dim"); x.disabled = true; });
     if (btn && !ok) btn.classList.add("wrong");
-    S.lastOk[k.id] = ok;
+    // Staged drills: a word only counts as known after its final true/false. A miss anywhere starts it over.
+    if (!staged) S.lastOk[k.id] = ok;
+    else if (!ok) S.lastOk[k.id] = false;
+    else if (it.st === 3) S.lastOk[k.id] = true;
+    else if (it.st === 1) queue.splice(Math.min(S.i + 4, queue.length), 0, { k, st: 2 }); // second question a few words later
+    else if (it.st === 2) queue.push({ k, st: 3 }); // true/false at the end
+    S.touched = S.touched || new Set(); S.touched.add(k.id);
     if (ok) { S.right++; S.combo++; S.best = Math.max(S.best, S.combo); S.xp += mode === "speed" ? 3 : 5; chime("good"); buzz(10); if (!S.wrong.has(k.id)) S.fixed.add(k.id); }
     else {
       S.combo = 0; S.wrong.add(k.id); S.fixed.delete(k.id); if (btn) { chime("bad"); buzz([30, 40, 30]); }
-      // Missed-words drill: a miss comes back (card first) until you get it right, up to 4 more times.
+      // Staged drills: the card comes back a few words later and the word starts over (up to 4 times).
       S.tries[k.id] = (S.tries[k.id] || 0) + 1;
-      if ((mode === "missed" || mode === "new") && S.tries[k.id] <= 4) queue.push(k);
+      if (staged && S.tries[k.id] <= 4) queue.splice(Math.min(S.i + 3, queue.length), 0, { k, st: 1 });
     }
     const nextQ = () => { S.i++; draw(); };
     if (mode === "speed") return setTimeout(nextQ, ok ? 250 : 900);
     if (ok) return setTimeout(nextQ, 550);
     const parts = isPair(k) ? k.parts.map((p) => `<p class="small"><b>${esc(p.term)}</b>: ${esc(p.simple)}</p>`).join("") : `<p><b>${esc(k.term)}</b>: ${esc(k.simple)}</p>`;
     $("fb").innerHTML = `<div class="feedback no"><h3>${btn ? "Not quite" : "Here it is"}</h3>${parts}${k.confuse ? `<p class="small">${esc(k.confuse)}</p>` : ""}
-      <p class="small muted">${mode === "missed" || mode === "new" ? (S.tries[k.id] <= 4 ? "You'll see the card again, then it comes back until you get it." : "Still on your missed list. We'll keep drilling it next time.") : "Saved to your missed words."}</p>
+      <p class="small muted">${staged ? (S.tries[k.id] <= 4 ? `${cardFirst ? "You'll see the card again in a moment, then" : "In a moment"} this word starts over until you get it.` : "Still on your missed list. We'll keep drilling it next time.") : "Saved to your missed words."}</p>
       <button class="btn ghost block" id="seecard">📖 See the card</button><button class="btn bad block" id="cont">Next</button></div>`;
     $("seecard").onclick = () => cardSheet(k);
     const fb = app.querySelector(".feedback"); app.querySelector(".sess").style.paddingBottom = fb.offsetHeight + 16 + "px";
@@ -1659,20 +1677,20 @@ route(/^\/cram\/([\w-]+)\/(rapid|speed|missed|tricky|new)$/, async (id, mode) =>
     let fixed = [...S.fixed].filter((x) => missed0.includes(x)), stillWrong = [...S.wrong];
     // Missed-words drill: a word you finally got right (after seeing its card again) comes off the list.
     // It stays "tricky" for good, so it still comes back more often in reviews.
-    if (mode === "missed" || mode === "new") { fixed = Object.keys(S.lastOk).filter((x) => S.lastOk[x]); stillWrong = Object.keys(S.lastOk).filter((x) => !S.lastOk[x]); }
+    if (staged) { fixed = Object.keys(S.lastOk).filter((x) => S.lastOk[x]); stillWrong = Object.keys(S.lastOk).filter((x) => !S.lastOk[x]); }
     await saveMissed(d, stillWrong, fixed);
     let newBest = false;
     if (mode === "speed") { const prev = store.get("sm-speed-" + id, 0); if (S.right > prev) { store.set("sm-speed-" + id, S.right); newBest = prev > 0; } }
     // Words you already learned and missed come up in reviews sooner. Right answers don't change your schedule.
     // New words drill: every word you went through now counts as learned (right or wrong), so it joins reviews and Rapid fire.
-    const results = mode === "new" ? Object.entries(S.lastOk).map(([card_id, ok]) => ({ card_id, ok, mode: "learn" }))
+    const results = mode === "new" ? [...(S.touched || [])].map((card_id) => ({ card_id, ok: S.lastOk[card_id] === true, mode: "learn" }))
       : [...S.wrong].filter((cid) => isLearned(d, { id: cid })).map((card_id) => ({ card_id, ok: false, mode: "review" }));
     await saveRound({ course_id: id, kind: "review", results, xp: S.xp, counts: S.asked >= 5 });
     const nowMissed = missedList(d).length, acc = Math.round((S.right / S.asked) * 100);
     app.innerHTML = `<div class="sess"><div class="cele">
       <div class="big-emoji">${newBest ? "🏆" : mode === "speed" ? "⏱" : acc >= 80 ? "🎯" : "💪"}</div>
       <h1>${mode === "speed" ? (newBest ? `New best: ${S.right}!` : `${S.right} right in ${SECS} seconds`) : `${S.right} of ${S.asked} right`}</h1>
-      <p class="muted">${mode === "speed" ? `Best: ${store.get("sm-speed-" + id, 0)}. ` : ""}${mode === "new" ? `${plural(Object.keys(S.lastOk).length, "new word")} learned. ` : ""}${stillWrong.length ? `${plural(stillWrong.length, "word")} ${mode === "missed" ? "still on" : "saved to"} your missed words. ` : "Nothing missed. "}${fixed.length ? `${plural(fixed.length, "word")} fixed and taken off the list.` : ""}</p>
+      <p class="muted">${mode === "speed" ? `Best: ${store.get("sm-speed-" + id, 0)}. ` : ""}${mode === "new" ? `${plural((S.touched || new Set()).size, "new word")} learned. ` : ""}${stillWrong.length ? `${plural(stillWrong.length, "word")} ${mode === "missed" ? "still on" : "saved to"} your missed words. ` : S.wrong.size ? "Got them all by the end. " : "Nothing missed. "}${fixed.length ? `${plural(fixed.length, "word")} fixed and taken off the list.` : ""}</p>
       <div class="tiles"><div class="tile xp"><b>${S.xp}</b><span>XP</span></div><div class="tile acc"><b>${acc}%</b><span>Correct</span></div><div class="tile fl"><b>${nowMissed}</b><span>Missed list</span></div></div>
       </div><div class="footbtn stack">
         ${nowMissed ? `<a class="btn primary block" href="#/cram/${id}/missed" id="again-missed">Drill my ${plural(nowMissed, "missed word")}</a>` : ""}
