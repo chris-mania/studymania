@@ -33,6 +33,66 @@ export function nextReview(prevBox, ok, mode, day, examDate, tricky = false) {
   return { box, due };
 }
 
+// ---------- "Know it" score: how well you know each word, 0 to 10 ----------
+// Built from: right vs wrong (recent answers count more), how many times and over how many
+// days you've been tested (one right answer the day you learn it can't be a 10), whether the
+// LAST answer was wrong (then it's 4 at most), and how long since you last saw it (it slowly
+// fades, faster for newer words). Answer speed is never used.
+// hist = last 20 answers, oldest first, "1" right / "0" wrong. last_seen = day of the last answer.
+export const HIST_MAX = 20;
+export const addHist = (hist, ok) => (String(hist || "") + (ok ? "1" : "0")).slice(-HIST_MAX);
+export function mastery(p, today) {
+  if (!p?.learned_at) return null;
+  let hist = String(p.hist || "").replace(/[^01]/g, "");
+  const right = p.right_count || 0, wrong = p.wrong_count || 0;
+  let acc, n, lastWrong;
+  if (hist) {
+    let sw = 0, so = 0;
+    for (let i = hist.length - 1, w = 1; i >= 0; i--, w *= 0.85) { sw += w; if (hist[i] === "1") so += w; }
+    acc = so / sw; n = Math.max(hist.length, Math.min(right + wrong, 40)); lastWrong = hist.endsWith("0");
+  } else {
+    // Older words saved before the score existed: use the totals.
+    n = right + wrong;
+    acc = n ? right / n : (p.box || 0) >= 1 ? 1 : 0.5;
+    n = Math.max(n, 1); lastWrong = wrong > 0 && (p.box || 0) === 0;
+  }
+  // Answers spread over more days count for more than many answers in one sitting.
+  const span = p.learned_at && today ? Math.max(0, daysBetween(p.learned_at, p.last_seen || today)) : 0;
+  const nEff = Math.min(n, 2 + 1.5 * span);
+  const sure = 1 - Math.pow(0.5, nEff / 1.5);
+  let s = 5 + (10 * acc - 5) * sure;
+  if (lastWrong) s = Math.min(s, 4);
+  // Fading: past its normal review gap, the score drops a little each day you don't see it.
+  const seen = p.last_seen || (p.due && isDay(p.due) ? addDays(p.due, -INTERVALS[Math.min(5, p.box || 0)]) : p.learned_at);
+  if (today && isDay(seen)) {
+    const gap = INTERVALS[Math.min(5, p.box || 0)], away = daysBetween(seen, today);
+    if (away > gap) s -= Math.min(5, (2 * (away - gap)) / (gap + 2));
+  }
+  return Math.max(0, Math.min(10, Math.round(s * 10) / 10));
+}
+export const masteryLevel = (m) => (m == null ? null : m >= 8.5 ? "mastered" : m >= 6.5 ? "good" : m >= 3.5 ? "getting" : "shaky");
+export const LEVEL_NAMES = { mastered: "Mastered", good: "Good", getting: "Getting there", shaky: "Shaky" };
+export const lastSeen = (p) => p?.last_seen || null;
+// Time to see this word again? The weaker it is, the sooner: 1 day for shaky words up to ~12 days for mastered ones.
+export function retestGap(m) { return m == null ? 0 : m < 4 ? 1 : m < 6 ? 2 : m < 7.5 ? 3 : m < 8.5 ? 5 : m < 9.5 ? 8 : 12; }
+export function needsRetest(p, today) {
+  if (!p?.learned_at) return false;
+  const seen = p.last_seen || p.learned_at;
+  return daysBetween(seen, today) >= retestGap(mastery(p, today));
+}
+// How much a word needs practice right now (lower = needs it more). Used to order everything.
+export function needScore(p, today) {
+  const m = mastery(p, today);
+  if (m == null) return 20;
+  const seen = p.last_seen || p.learned_at, away = isDay(seen) ? daysBetween(seen, today) : 0;
+  return m - Math.min(4, away / Math.max(1, retestGap(m))) + (p.due && p.due <= today ? -1 : 0);
+}
+// After an answer: a weak word comes back sooner than its normal review date.
+export function pullDue(due, m, day) {
+  const cap = m == null ? null : m <= 4 ? addDays(day, 1) : m <= 6 ? addDays(day, 2) : m <= 7.5 ? addDays(day, 4) : null;
+  return cap && (!due || cap < due) ? cap : due;
+}
+
 // Monday of the week a day falls in (for the weekly leaderboard).
 export function weekStart(day) {
   const dow = new Date(day + "T12:00:00Z").getUTCDay(); // 0 = Sunday
@@ -44,14 +104,14 @@ export function weekStart(day) {
 export function pickThrowbacks(cards, progress, excludeIds, today, n = 3) {
   const pool = cards.filter((c) => progress[c.id]?.learned_at && !excludeIds.has(c.id));
   if (!pool.length) return [];
-  const score = (c) => {
-    const p = progress[c.id];
-    return (p.due && p.due <= today ? 0 : 10) + (p.box || 0) * 2 - Math.min(6, p.wrong_count || 0) - (isTricky(p) ? 3 : 0) + Math.random() * 1.5;
-  };
+  // Lowest "Know it" score + longest since you saw it first.
+  const score = (c) => needScore(progress[c.id], today) - (isTricky(progress[c.id]) ? 0.5 : 0) + Math.random() * 1.2;
   const sorted = [...pool].sort((a, b) => score(a) - score(b));
   const out = sorted.slice(0, Math.max(0, n - 1));
-  const strong = pool.filter((c) => (progress[c.id].box || 0) >= 3 && !out.includes(c));
-  const extra = strong.length ? strong[(Math.random() * strong.length) | 0] : sorted[n - 1];
+  // Plus one word you know well that you haven't seen in the longest time, so nothing is forgotten.
+  const seen = (c) => progress[c.id].last_seen || progress[c.id].learned_at || "";
+  const strong = pool.filter((c) => (mastery(progress[c.id], today) ?? 0) >= 6.5 && !out.includes(c)).sort((a, b) => seen(a).localeCompare(seen(b)));
+  const extra = strong.length ? strong[0] : sorted[n - 1];
   if (extra && !out.includes(extra)) out.push(extra);
   return out.slice(0, n);
 }
@@ -206,10 +266,11 @@ export function lessonsAndPlan(course, cards, progress, today) {
 
 export function summarize(course, cards, progress, today) {
   const { lessons, plan: p } = lessonsAndPlan(course, cards, progress, today);
-  let learned = 0, due = 0, strong = 0, tricky = 0;
+  let learned = 0, due = 0, strong = 0, tricky = 0, retest = 0;
+  const know = { mastered: 0, good: 0, getting: 0, shaky: 0 };
   for (const c of cards) {
     const pr = progress[c.id];
-    if (pr?.learned_at) { learned++; if (pr.due && pr.due <= today) due++; }
+    if (pr?.learned_at) { learned++; if (pr.due && pr.due <= today) due++; else if (needsRetest(pr, today)) retest++; know[masteryLevel(mastery(pr, today))]++; }
     if ((pr?.box || 0) >= 2) strong++;
     if (isTricky(pr)) tricky++;
   }
@@ -218,7 +279,7 @@ export function summarize(course, cards, progress, today) {
     review_days: course.review_days ?? 3, finish_by: course.finish_by || null, as_you_go: course.as_you_go ? 1 : 0, keep_up_days: course.keep_up_days ?? 3,
     missed: mergeMissed(course.missed, [], []).filter((id) => cards.some((k) => k.id === id)).length,
     more_total: course.more_total ?? null, more_have: course.more_have ?? null, more_every: course.more_every || null, more_share: course.more_share ?? null, notes_done: course.notes_done ? 1 : 0,
-    total: cards.length, learned, due, strong, tricky, lessons: lessons.length, plan: p,
+    total: cards.length, learned, due, retest, strong, tricky, know, lessons: lessons.length, plan: p,
     next: (() => { const l = lessons.find((x) => !x.cards.every((c) => progress[c.id]?.learned_at)); return l ? { n: l.n, topic: l.topic, words: l.cards.length } : null; })(),
   };
 }

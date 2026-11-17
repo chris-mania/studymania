@@ -1,5 +1,5 @@
 /* Study Mania — app screens */
-import { addDays, daysBetween, niceDate, buildLessons, planFor, lessonsAndPlan, isTricky, pickThrowbacks, secondReminderHour, mergeMissed } from "./shared.mjs";
+import { addDays, daysBetween, niceDate, buildLessons, planFor, lessonsAndPlan, isTricky, pickThrowbacks, secondReminderHour, mergeMissed, mastery, needsRetest, needScore } from "./shared.mjs";
 import { localApi, hasGuestData, guestExport, clearGuest } from "./local.mjs";
 
 // ---------- helpers ----------
@@ -143,6 +143,20 @@ async function loadCourse(id) {
   return d;
 }
 const isLearned = (d, k) => !!d.progress[k.id]?.learned_at;
+// "Know it" score helpers (0-10, see shared.mjs).
+const know = (d, k) => mastery(d.progress[k.id], todayStr());
+const need = (d, k) => needScore(d.progress[k.id], todayStr());
+// Every answer from Rapid fire, games and practice exams is saved for the score. One result per word per round:
+// a miss (if you missed it), then a right answer (if you also got it right). Words not learned yet are skipped.
+const practiceResults = (d, okIds, wrongIds) => {
+  const ok = new Set(okIds), bad = new Set(wrongIds), out = [];
+  for (const cid of new Set([...bad, ...ok])) {
+    if (!isLearned(d, { id: cid })) continue;
+    if (bad.has(cid)) out.push({ card_id: cid, ok: false, mode: "practice" });
+    if (ok.has(cid)) out.push({ card_id: cid, ok: true, mode: "practice" });
+  }
+  return out;
+};
 // Each subject keeps its own list of words you got wrong. Saved to your account, merged on the server.
 const missedList = (d) => mergeMissed(d.course.missed, [], []).filter((id) => d.cards.some((k) => k.id === id));
 async function saveMissed(d, add, remove) {
@@ -1063,7 +1077,7 @@ route(/^\/c\/([\w-]+)$/, async (id) => {
         <div class="cramgrid">
           <a class="cramtile" href="#/cram/${c.id}/rapid"><i>⚡</i><b>Rapid fire</b><span>Every word, weakest first</span></a>
           <a class="cramtile" href="#/games/${c.id}"><i>🎮</i><b>Games</b><span>Falling Words · Match Rush · Sort It · T/F Blitz</span></a>
-          <a class="cramtile ${missed ? "hot" : "off"}" href="#/cram/${c.id}/missed"><i>🎯</i><b>Missed words</b><span>${missed ? `${missed} to fix` : "None yet"}</span></a>
+          <a class="cramtile ${missed ? "hot" : "off"}" href="#/missed/${c.id}"><i>🎯</i><b>Missed words</b><span>${missed ? `${missed} to fix` : "None yet"}</span></a>
           <button class="cramtile ${due ? "" : "off"}" id="c-review"><i>🔁</i><b>Review</b><span>${due ? `${due} due` : "Nothing due"}</span></button>
           <button class="cramtile" id="c-exam"><i>📝</i><b>Practice exam</b><span>Like the real test</span></button>
           <a class="cramtile" href="#/add/${c.id}"><i>➕</i><b>Add more</b><span>New notes or slides</span></a>
@@ -1195,7 +1209,7 @@ function markSheet(d, after, first) {
 
 // ---------- questions ----------
 // "See the card": read the whole word again after a miss (Study & Cram and reviews).
-function cardSheet(k) {
+function cardSheet(k, d) {
   const el = sheet(`<div class="scroll">${cardView(k)}</div><button class="btn primary block" id="cs-ok" style="flex:none">Got it</button>`);
   el.querySelector("#cs-ok").onclick = () => el.remove();
 }
@@ -1306,14 +1320,19 @@ route(/^\/s\/([\w-]+)\/(next|review|quiz|lesson|misses)(?:\/(\d+|all))?$/, async
     lesson.cards.forEach((k) => steps.push({ t: "teach", k }, { t: "check", k }));
     shuffle([...lesson.cards]).forEach((k) => steps.push({ t: "recap", k }));
     // Throwbacks: older words sprinkled in, missed and overdue ones first.
-    pickThrowbacks(d.cards, d.progress, new Set(lesson.cards.map((k) => k.id)), T, 3).forEach((k, j) => steps.push({ t: j % 2 ? "recap" : "check", k, tb: true }));
+    pickThrowbacks(d.cards, d.progress, new Set(lesson.cards.map((k) => k.id)), T, 3 + Math.min(2, Math.floor(d.cards.filter((k) => (know(d, k) ?? 10) < 6.5).length / 6))).forEach((k, j) => steps.push({ t: j % 2 ? "recap" : "check", k, tb: true }));
   } else {
     let pool;
     if (kind === "misses") pool = d.cards.filter((k) => (MISSES[id] || []).includes(k.id));
     else {
       pool = d.cards.filter((k) => isLearned(d, k));
-      if (kind === "review") pool = pool.filter((k) => d.progress[k.id].due <= T).sort((a, b) => d.progress[a.id].due.localeCompare(d.progress[b.id].due));
-      else pool = shuffle(pool).sort((a, b) => (d.progress[a.id].box || 0) - (d.progress[b.id].box || 0));
+      // Review: words that are due, plus words it's time to see again by their "Know it" score
+      // (weaker = sooner), weakest first. Due words always come before the extra ones.
+      if (kind === "review") {
+        const due = pool.filter((k) => d.progress[k.id].due <= T), extra = pool.filter((k) => !due.includes(k) && needsRetest(d.progress[k.id], T));
+        const byNeed = (a, b) => need(d, a) - need(d, b);
+        pool = [...due.sort(byNeed), ...extra.sort(byNeed)];
+      } else pool = shuffle(pool).sort((a, b) => need(d, a) - need(d, b));
       // Review from Study & Cram goes over EVERY due word at once; the quick review before a lesson stays at 12.
       pool = pool.slice(0, kind === "review" ? (num === "all" ? Infinity : 12) : 10);
     }
@@ -1459,7 +1478,7 @@ route(/^\/s\/([\w-]+)\/(next|review|quiz|lesson|misses)(?:\/(\d+|all))?$/, async
       ${ok ? (k.hook ? `<p class="small">${esc(k.hook)}</p>` : "") : `${isPair(k) ? k.parts.map((p) => `<p class="small"><b>${esc(p.term)}</b>: ${esc(p.simple)}</p>`).join("") : `<p><b>${esc(k.term)}</b>: ${esc(k.simple)}</p>`}${k.confuse ? `<p class="small">${esc(k.confuse)}</p>` : ""}<p class="small muted">It'll come back in a moment.</p>`}
       ${!ok && mode !== "learn" ? `<button class="btn ghost block" id="seecard">📖 See the card</button>` : ""}
       <button class="btn ${ok ? "good" : "bad"} block" id="cont">Continue</button></div>`;
-    if ($("seecard")) $("seecard").onclick = () => cardSheet(k);
+    if ($("seecard")) $("seecard").onclick = () => cardSheet(k, d);
     // The panel is pinned to the bottom of the screen, so nothing scrolls. Leave room under the answers for it.
     const c = $("cont"), fb = app.querySelector(".feedback"); c.focus({ preventScroll: true });
     app.querySelector(".sess").style.paddingBottom = fb.offsetHeight + 16 + "px";
@@ -1558,8 +1577,12 @@ function celebrate(before, { xp, accuracy, best, text, title, after }) {
 // 40% from everything else, so you keep seeing ALL your words, not just the hard ones.
 function mixPick(d, n, list = d.cards) {
   const T = todayStr(), missed = new Set(missedList(d));
-  const weak = (k) => { const p = d.progress[k.id]; return missed.has(k.id) || isTricky(p) || (p?.learned_at && ((p.box || 0) <= 1 || (p.due && p.due <= T))); };
-  const w = shuffle(list.filter(weak)), r = shuffle(list.filter((k) => !weak(k))), out = [];
+  // Weak = missed, "Know it" score 6 or lower, or time to see it again. The rest go oldest-seen first, so every word comes up.
+  const weak = (k) => { const p = d.progress[k.id]; return missed.has(k.id) || (p?.learned_at && ((know(d, k) ?? 0) <= 6 || needsRetest(p, T) || (p.due && p.due <= T))); };
+  const seen = (k) => d.progress[k.id]?.last_seen || d.progress[k.id]?.learned_at || "";
+  const jitter = (arr, f) => arr.map((k) => [f(k) + Math.random() * 1.5, k]).sort((a, b) => a[0] - b[0]).map((x) => x[1]);
+  const w = jitter(list.filter(weak), (k) => need(d, k) / 3);
+  const r = jitter(list.filter((k) => !weak(k)), (k) => { const s = seen(k); return s ? -daysBetween(s, T) / 2 : -5; }), out = [];
   while (out.length < n && (w.length || r.length)) out.push((w.length && (Math.random() < 0.6 || !r.length) ? w : r).shift());
   return out;
 }
@@ -1567,6 +1590,32 @@ const maskTerm = (text, k) => {
   const names = [k.term, k.full].filter(Boolean).map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   return String(text || "").replace(new RegExp(`\\b(${names.join("|")})\\b`, "gi"), "____");
 };
+
+// ---------- Missed words: see the list first, read any card, remove any, then drill ----------
+route(/^\/missed\/([\w-]+)$/, async (id) => {
+  let d;
+  try { d = await loadCourse(id); } catch (e) { toast(e.message); return go("/"); }
+  setCurClass(id);
+  const draw = () => {
+    const words = missedList(d).map((cid) => d.cards.find((k) => k.id === cid)).filter(Boolean);
+    app.innerHTML = `${topbar(location.hash.includes("from=c") ? "/c/" + id : "/study/" + id)}<div class="stack">
+      <div>${classTag(d.course)}<h1 style="margin-top:4px">Missed words</h1>
+        <p class="muted">${words.length ? `${plural(words.length, "word")} you got wrong. Tap one to read its card. Remove any you actually know.` : "Nothing here. Words you get wrong show up here."}</p></div>
+      ${words.length ? `<a class="btn primary block" href="#/cram/${id}/missed">🎯 Drill ${words.length === 1 ? "it" : `all ${words.length}`}</a>` : ""}
+      <div class="stack" style="gap:8px">${words.map((k) => `<div class="gmiss pick">
+        <button type="button" class="gword" data-card="${k.id}"><b>${esc(k.term)}</b><span>${esc(k.simple)}</span></button>
+        <button type="button" class="mrm" data-rm="${k.id}" aria-label="Remove ${esc(k.term)} from missed words">Remove</button></div>`).join("")}</div>
+      ${words.length ? "" : `<a class="btn block" href="#/study/${id}">Back to Study &amp; Cram</a>`}
+    </div>`;
+    app.querySelectorAll("[data-card]").forEach((b) => (b.onclick = () => cardSheet(d.cards.find((k) => k.id === b.dataset.card), d)));
+    app.querySelectorAll("[data-rm]").forEach((b) => (b.onclick = async () => {
+      const cid = b.dataset.rm, k = d.cards.find((x) => x.id === cid);
+      await saveMissed(d, [], [cid]); draw();
+      toast(`Removed ${k ? k.term : "word"}.`);
+    }));
+  };
+  draw();
+});
 
 // ---------- Study & Cram: pick the class, then what you need ----------
 route(/^\/study$/, () => {
@@ -1592,9 +1641,9 @@ route(/^\/study\/([\w-]+)$/, (id) => {
     <div>${classTag(c)}<div class="kicker" style="color:var(--rev)">Study &amp; Cram${multi ? " · 2 of 2" : ""}</div><h1 style="margin-top:4px">What do you need?</h1></div>
     ${c.total - c.learned > 0 && ((n !== null && n >= 0 && n <= 2) || c.plan.phase === "review") ? opt(`/cram/${id}/new`, "o-new hot", "🆕", "New words", "Words you haven't learned yet, newest first. Card first, then a quick quiz", c.total - c.learned) : ""}
     ${opt(`/cram/${id}/rapid`, "o-cram" + (n !== null && n <= 7 ? " hot" : ""), "⚡", n !== null && n >= 0 && n <= 7 ? `Exam ${n ? `in ${plural(n, "day")}` : "today"}? Cram` : "Cram", "Rapid fire: mostly your weak words, mixed with all the rest")}
-    ${opt(c.due ? `/s/${id}/review/all` : `/cram/${id}/rapid`, "o-rev", "🔁", "Review", c.due ? `All ${plural(c.due, "word")} that are due, in one go` : "Nothing due right now. This opens rapid fire instead", c.due || "")}
+    ${(() => { const r = (c.due || 0) + (c.retest || 0); return opt(r ? `/s/${id}/review/all` : `/cram/${id}/rapid`, "o-rev", "🔁", "Review", r ? `All ${plural(r, "word")} that are due or that it's time to see again, weakest first` : "Nothing due right now. This opens rapid fire instead", r || ""); })()}
     ${opt(`/exam/${id}`, "o-exam", "📝", "Practice exam", "Like the real test, with a score")}
-    ${c.missed ? opt(`/cram/${id}/missed`, "o-miss", "🎯", "Fix missed words", "Everything you got wrong, until you get it right", c.missed) : ""}
+    ${c.missed ? opt(`/missed/${id}`, "o-miss", "🎯", "Missed words", "See them all, tap one to read its card, remove any, then drill them", c.missed) : ""}
     ${c.tricky ? opt(`/cram/${id}/tricky`, "o-tricky", "🧠", "Tricky words", "Every word you've missed before, even once. They also come back more often in reviews.", c.tricky) : ""}
     ${opt(`/add/${id}/cram`, "o-add", "📥", "Add last-minute notes", "Forgot some notes? Short-on-time version: only what's likely on the test, then cram it right away")}
     ${opt(`/games/${id}`, "o-speed", "🎮", "Games", "Falling Words, Match Rush, Sort It and True or False Blitz. A mix of your weak words and all the rest")}
@@ -1609,7 +1658,7 @@ route(/^\/cram\/([\w-]+)\/(rapid|speed|missed|tricky|new)$/, async (id, mode) =>
   const missed0 = missedList(d);
   // Weakest first: missed words, then learned words by how well you know them, then ones not learned yet.
   // Weakest first: missed words, then tricky ones (missed before, even once), then by how well you know them.
-  const weight = (k) => (missed0.includes(k.id) ? -2 : isTricky(d.progress[k.id]) ? -1 : isLearned(d, k) ? d.progress[k.id].box || 0 : 9);
+  const weight = (k) => (missed0.includes(k.id) ? -2 : isLearned(d, k) ? need(d, k) / 2 : 9);
   let pool = mode === "missed" ? shuffle(d.cards.filter((k) => missed0.includes(k.id)))
     : mode === "tricky" ? shuffle(d.cards.filter((k) => isTricky(d.progress[k.id])))
     // New words: ones you haven't learned yet, newest notes first.
@@ -1744,7 +1793,7 @@ route(/^\/cram\/([\w-]+)\/(rapid|speed|missed|tricky|new)$/, async (id, mode) =>
     else if (it.st === 1) queue.splice(Math.min(S.i + 4, queue.length), 0, { k, st: 2 }); // second question a few words later
     else if (it.st === 2) { S.lastOk[k.id] = true; queue.push({ k, st: 3 }); } // learned! quick true/false bonus check at the end
     S.touched = S.touched || new Set(); S.touched.add(k.id);
-    if (ok) { S.right++; S.combo++; S.best = Math.max(S.best, S.combo); S.xp += mode === "speed" ? 3 : 5; chime("good"); buzz(10); if (!S.wrong.has(k.id)) S.fixed.add(k.id); }
+    if (ok) { (S.okIds ||= new Set()).add(k.id); S.right++; S.combo++; S.best = Math.max(S.best, S.combo); S.xp += mode === "speed" ? 3 : 5; chime("good"); buzz(10); if (!S.wrong.has(k.id)) S.fixed.add(k.id); }
     else {
       S.combo = 0; S.wrong.add(k.id); S.fixed.delete(k.id); if (btn || (forced && !forced.idk)) { chime("bad"); buzz([30, 40, 30]); }
       // Staged drills: the card comes back a few words later and the word starts over (up to 4 times).
@@ -1758,7 +1807,7 @@ route(/^\/cram\/([\w-]+)\/(rapid|speed|missed|tricky|new)$/, async (id, mode) =>
     $("fb").innerHTML = `<div class="feedback no"><h3>${btn || (forced && !forced.idk) ? "Not quite" : "Here it is"}</h3>${parts}${k.confuse ? `<p class="small">${esc(k.confuse)}</p>` : ""}
       <p class="small muted">${staged ? (S.tries[k.id] <= 4 ? `${cardFirst ? "You'll see the card again in a moment, then" : "In a moment"} this word starts over until you get it.` : "Still on your missed list. We'll keep drilling it next time.") : "Saved to your missed words."}</p>
       <button class="btn ghost block" id="seecard">📖 See the card</button><button class="btn bad block" id="cont">Next</button></div>`;
-    $("seecard").onclick = () => cardSheet(k);
+    $("seecard").onclick = () => cardSheet(k, d);
     const fb = app.querySelector(".feedback"); app.querySelector(".sess").style.paddingBottom = fb.offsetHeight + 16 + "px";
     $("cont").focus({ preventScroll: true }); $("cont").onclick = nextQ;
   }
@@ -1776,7 +1825,7 @@ route(/^\/cram\/([\w-]+)\/(rapid|speed|missed|tricky|new)$/, async (id, mode) =>
     // Words you already learned and missed come up in reviews sooner. Right answers don't change your schedule.
     // New words drill: every word you went through now counts as learned (right or wrong), so it joins reviews and Rapid fire.
     const results = mode === "new" ? [...(S.touched || [])].map((card_id) => ({ card_id, ok: S.lastOk[card_id] === true, mode: "learn" }))
-      : [...S.wrong].filter((cid) => isLearned(d, { id: cid })).map((card_id) => ({ card_id, ok: false, mode: "review" }));
+      : practiceResults(d, S.okIds || [], S.wrong);
     await saveRound({ course_id: id, kind: "review", results, xp: S.xp, counts: S.asked >= 5 });
     const nowMissed = missedList(d).length, acc = Math.round((S.right / S.asked) * 100);
     app.innerHTML = `<div class="sess"><div class="cele">
@@ -1840,15 +1889,36 @@ route(/^\/game\/([\w-]+)\/(fall|match|sort|tf)$/, async (id, kind) => {
     const key = `sm-game-${kind}-${id}`, prev = store.get(key, null), isBest = prev == null || (higherBetter ? score > prev : score < prev);
     if (isBest) store.set(key, score);
     const missIds = [...new Set(G.missed.map((k) => k.id))];
-    await saveMissed(d, missIds, []);
-    const results = missIds.filter((cid) => isLearned(d, { id: cid })).map((card_id) => ({ card_id, ok: false, mode: "review" }));
+    // Games are fast, so misses are NOT saved on their own: you pick which ones (if any) go to your missed words.
+    // Right answers still count toward how well you know each word.
+    const results = practiceResults(d, G.right.map((k) => k.id), []);
     await saveRound({ course_id: id, kind: "review", results, xp: Math.max(0, Math.round(score)) * 2, counts: G.right.length + G.missed.length >= 5 });
     const uniq = missIds.map((cid) => d.cards.find((k) => k.id === cid)).filter(Boolean);
+    const already = new Set(missedList(d));
     app.innerHTML = `<div class="sess"><div class="cele">
       <div class="big-emoji">${isBest && prev != null ? "🏆" : "🎮"}</div>
       <h1>${score} ${meta[3]}</h1><p class="muted">${isBest && prev != null ? "New best!" : prev != null ? `Best: ${Math.max(prev, score)} ${meta[3]}` : "First game!"}</p>
-      ${uniq.length ? `<div class="stack" style="gap:8px;text-align:left;width:100%"><div class="kicker">Missed · saved to your missed words</div>${uniq.map((k) => `<div class="gmiss"><b>${esc(k.term)}</b><span>${esc(k.simple)}</span></div>`).join("")}</div>` : `<p class="muted">Nothing missed. Clean run.</p>`}
+      ${uniq.length ? `<div class="stack" style="gap:8px;text-align:left;width:100%">
+        <div class="kicker">You missed ${plural(uniq.length, "word")}</div>
+        <p class="muted small" style="margin:0">Tick the ones you really didn't know to add them to your missed words. Tap a word to see its card.</p>
+        ${uniq.map((k) => `<div class="gmiss pick"><label class="gchk"><input type="checkbox" data-id="${k.id}" ${already.has(k.id) ? "checked disabled" : ""} aria-label="Add ${esc(k.term)} to missed words"></label>
+          <button type="button" class="gword" data-card="${k.id}"><b>${esc(k.term)}</b><span>${already.has(k.id) ? "Already in your missed words" : esc(k.simple)}</span></button></div>`).join("")}
+        <button class="btn block" id="g-save" disabled>Add to missed words</button></div>` : `<p class="muted">Nothing missed. Clean run.</p>`}
       </div><div class="footbtn stack"><button class="btn primary block" id="again">Play again</button><a class="btn ghost block" href="#/games/${id}">Back to games</a></div></div>`;
+    const boxes = () => [...app.querySelectorAll(".gchk input:not([disabled])")];
+    const sync = () => { const n = boxes().filter((x) => x.checked).length, b = $("g-save"); if (b) { b.disabled = !n; b.textContent = n ? `Add ${plural(n, "word")} to missed words` : "Add to missed words"; b.classList.toggle("primary", !!n); } };
+    boxes().forEach((x) => (x.onchange = sync));
+    app.querySelectorAll("[data-card]").forEach((b) => (b.onclick = () => cardSheet(d.cards.find((k) => k.id === b.dataset.card), d)));
+    if ($("g-save")) $("g-save").onclick = async () => {
+      const pick = boxes().filter((x) => x.checked).map((x) => x.dataset.id);
+      if (!pick.length) return;
+      $("g-save").disabled = true;
+      await saveMissed(d, pick, []);
+      await saveRound({ course_id: id, kind: "review", results: practiceResults(d, [], pick), xp: 0, counts: false });
+      boxes().forEach((x) => { if (x.checked) x.disabled = true; });
+      $("g-save").textContent = `✓ Added ${plural(pick.length, "word")}`; $("g-save").classList.remove("primary");
+      toast(`${plural(pick.length, "word")} added to your missed words.`);
+    };
     if (isBest && prev != null) confetti(1); chime("win");
     $("again").onclick = () => render();
   };
@@ -2038,7 +2108,8 @@ route(/^\/exam\/([\w-]+)$/, async (id) => {
     d.seen = S.from === "all" ? null : new Set(d.cards.filter((k) => isLearned(d, k)).map((k) => k.id));
     // Each word once, in this order: missed words, then words that haven't been in a practice exam yet, then the rest.
     // Words already tested by one of the AI questions go last, so the exam doesn't repeat itself.
-    const missed = new Set(missedList(d)), covered = new Set(examCovered()), rank = (k) => (missed.has(k.id) ? 0 : !covered.has(k.id) ? 1 : 2) + (aiAns.has(k.term.toLowerCase()) ? 3 : 0);
+    // Inside each group, the lowest "Know it" score goes first.
+    const missed = new Set(missedList(d)), covered = new Set(examCovered()), rank = (k) => (missed.has(k.id) ? 0 : !covered.has(k.id) ? 1 : 2) + (aiAns.has(k.term.toLowerCase()) ? 3 : 0) + Math.max(0, Math.min(0.9, (need(d, k) + 4) / 30 + Math.random() * 0.1));
     const picked = shuffle([...p.cards]).sort((a, b) => rank(a) - rank(b)).slice(0, n - ai.length);
     // Remember which words were covered; once every word has had a turn, start the rotation over.
     const nowCovered = new Set([...covered, ...picked.map((k) => k.id)]);
@@ -2083,7 +2154,7 @@ route(/^\/exam\/([\w-]+)$/, async (id) => {
       MISSES[id] = missCards;
       saveMissed(d, missCards, []);
       const before = await saveRound({ course_id: id, kind: "exam", xp: score * 5 + (pct === 100 ? 20 : 0), exam: { score, total: qs.length },
-        results: missCards.filter((cid) => isLearned(d, { id: cid })).map((card_id) => ({ card_id, ok: false, mode: "review" })) });
+        results: practiceResults(d, graded.filter((g) => g.ok && g.q.k).map((g) => g.q.k.id), missCards) });
       const goalHit = !before.goalDone && goalInfo().done;
       const verdict = pct >= 90 ? "You're ready. 🎯" : pct >= 80 ? "Looking strong." : pct >= 70 ? "Getting there." : "Good practice. Study the misses.";
       app.innerHTML = `${topbar("/c/" + id)}<div class="stack">

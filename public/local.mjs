@@ -1,5 +1,5 @@
 // No-account mode: the same API as the server, but everything lives in this browser.
-import { addDays, daysBetween, isDay, nextReview, summarize, cleanCard, cleanQuestion, mergeMissed } from "./shared.mjs";
+import { addDays, daysBetween, isDay, nextReview, summarize, mastery, addHist, pullDue, cleanCard, cleanQuestion, mergeMissed } from "./shared.mjs";
 
 const KEY = "sm-guest-data";
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
@@ -116,11 +116,16 @@ export async function localApi(path, method, body, day) {
     d.rounds ||= [];
     if (b.round_id && d.rounds.includes(b.round_id)) return { user: pubUser(d.user, day), today: todayInfo(d, day), duplicate: true };
     if (b.round_id) { d.rounds.push(b.round_id); if (d.rounds.length > 300) d.rounds = d.rounds.slice(-300); }
+    // Same as the server: every answer feeds the "Know it" score; practice answers only move the schedule when wrong.
     for (const r of b.results || []) {
       if (!c.cards.some((k) => k.id === r.card_id)) continue;
-      const prev = c.progress[r.card_id];
-      const nr = nextReview(prev?.box, !!r.ok, r.mode === "learn" ? "learn" : "review", day, c.exam_date, (prev?.wrong_count || 0) > 0);
-      c.progress[r.card_id] = { box: nr.box, due: nr.due, learned_at: prev?.learned_at || day, wrong_count: (prev?.wrong_count || 0) + (r.ok ? 0 : 1) };
+      const prev = c.progress[r.card_id], ok = !!r.ok;
+      if (r.mode === "practice" && !prev?.learned_at) continue;
+      let box = prev?.box ?? 0, due = prev?.due || null;
+      if (r.mode !== "practice" || !ok) ({ box, due } = nextReview(prev?.box, ok, r.mode === "learn" ? "learn" : "review", day, c.exam_date, (prev?.wrong_count || 0) > 0 || !ok));
+      const next = { box, due, learned_at: prev?.learned_at || day, right_count: (prev?.right_count || 0) + (ok ? 1 : 0), wrong_count: (prev?.wrong_count || 0) + (ok ? 0 : 1), hist: addHist(prev?.hist, ok), last_seen: day };
+      next.due = pullDue(next.due, mastery(next, day), day);
+      c.progress[r.card_id] = next;
     }
     if (b.exam?.total > 0) c.exams.push({ day, score: b.exam.score, total: b.exam.total });
     const xp = Math.min(800, Math.max(0, parseInt(b.xp, 10) || 0));

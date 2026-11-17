@@ -1,7 +1,7 @@
 // Study Mania API (Cloudflare Worker + D1)
 import { sendPush } from "./webpush.js";
 import { ensureDb } from "./migrate.js";
-import { addDays, daysBetween, isDay, nextReview, summarize, cleanCard, cleanQuestion, weekStart, secondReminderHour, mergeMissed } from "../public/shared.mjs";
+import { addDays, daysBetween, isDay, nextReview, summarize, mastery, addHist, pullDue, cleanCard, cleanQuestion, weekStart, secondReminderHour, mergeMissed } from "../public/shared.mjs";
 
 const SESSION_DAYS = 60;
 const MAX_CARDS_PER_COURSE = 800;
@@ -128,7 +128,7 @@ const ownCourse = (env, id, userId) => env.DB.prepare("SELECT * FROM courses WHE
 async function courseSummaries(env, userId, day) {
   const courses = (await env.DB.prepare("SELECT * FROM courses WHERE user_id = ? ORDER BY COALESCE(exam_date, finish_by, '9999'), created_at").bind(userId).all()).results;
   const cards = (await env.DB.prepare("SELECT id, course_id, topic, added_day FROM cards WHERE user_id = ? ORDER BY course_id, ord").bind(userId).all()).results;
-  const prog = (await env.DB.prepare("SELECT card_id, box, due, learned_at, wrong_count FROM progress WHERE user_id = ?").bind(userId).all()).results;
+  const prog = (await env.DB.prepare("SELECT card_id, box, due, learned_at, right_count, wrong_count, last_seen, hist FROM progress WHERE user_id = ?").bind(userId).all()).results;
   const progress = Object.fromEntries(prog.map((p) => [p.card_id, p]));
   return courses.map((c) => summarize(c, cards.filter((k) => k.course_id === c.id), progress, day));
 }
@@ -414,7 +414,7 @@ async function api(req, env, url) {
         .map((c) => ({ ...c, traps: JSON.parse(c.traps || "[]"), related: JSON.parse(c.related || "[]"), parts: JSON.parse(c.parts || "[]") }));
       const questions = (await env.DB.prepare("SELECT id, topic, q, choices, answer, why, added_day FROM questions WHERE course_id = ? ORDER BY ord").bind(course.id).all()).results
         .map((q) => ({ ...q, choices: JSON.parse(q.choices || "[]") }));
-      const prog = (await env.DB.prepare("SELECT card_id, box, due, learned_at, wrong_count FROM progress WHERE course_id = ?").bind(course.id).all()).results;
+      const prog = (await env.DB.prepare("SELECT card_id, box, due, learned_at, right_count, wrong_count, last_seen, hist FROM progress WHERE course_id = ?").bind(course.id).all()).results;
       const exams = (await env.DB.prepare("SELECT day, score, total FROM exams WHERE course_id = ? ORDER BY day DESC, rowid DESC LIMIT 10").bind(course.id).all()).results;
       return json({ course, cards, questions, exams, progress: Object.fromEntries(prog.map((p) => [p.card_id, p])) });
     }
@@ -484,16 +484,32 @@ async function api(req, env, url) {
     }
     const results = Array.isArray(b.results) ? b.results.slice(0, 300) : [];
     const stmts = [];
+    // Every answer is saved for the "Know it" score (hist + last_seen).
+    //   learn / review: also moves the word's review schedule, like always.
+    //   practice (Rapid fire, games, practice exams): a right answer only feeds the score;
+    //   a wrong one sends the word back to review soon, like a missed review.
+    // Weak words come back sooner than their normal review date (pullDue).
+    const state = {};
     for (const r of results) {
-      const cid = String(r.card_id || "");
-      const prev = await env.DB.prepare("SELECT box, wrong_count FROM progress WHERE card_id = ? AND course_id = ?").bind(cid, course.id).first();
-      const nr = nextReview(prev?.box, !!r.ok, r.mode === "learn" ? "learn" : "review", day, course.exam_date, (prev?.wrong_count || 0) > 0);
+      const cid = String(r.card_id || ""), ok = !!r.ok;
+      if (!(cid in state)) state[cid] = await env.DB.prepare("SELECT box, due, learned_at, right_count, wrong_count, hist FROM progress WHERE card_id = ? AND course_id = ?").bind(cid, course.id).first();
+      const prev = state[cid];
+      if (r.mode === "practice" && !prev?.learned_at) continue; // not learned yet: nothing to score
+      const hist = addHist(prev?.hist, ok);
+      let box = prev?.box ?? 0, due = prev?.due || null;
+      if (r.mode !== "practice" || !ok) ({ box, due } = nextReview(prev?.box, ok, r.mode === "learn" ? "learn" : "review", day, course.exam_date, (prev?.wrong_count || 0) > 0 || !ok));
+      const next = { box, due, learned_at: prev?.learned_at || day, right_count: (prev?.right_count || 0) + (ok ? 1 : 0), wrong_count: (prev?.wrong_count || 0) + (ok ? 0 : 1), hist, last_seen: day };
+      next.due = pullDue(next.due, mastery(next, day), day);
+      state[cid] = next;
+    }
+    for (const [cid, p] of Object.entries(state)) {
+      if (!p?.hist) continue; // only read, never answered
       stmts.push(env.DB.prepare(
-        `INSERT INTO progress (card_id, user_id, course_id, box, due, learned_at, right_count, wrong_count)
-         SELECT id, ?, ?, ?, ?, ?, ?, ? FROM cards WHERE id = ? AND course_id = ?
+        `INSERT INTO progress (card_id, user_id, course_id, box, due, learned_at, right_count, wrong_count, hist, last_seen)
+         SELECT id, ?, ?, ?, ?, ?, ?, ?, ?, ? FROM cards WHERE id = ? AND course_id = ?
          ON CONFLICT(card_id) DO UPDATE SET box = excluded.box, due = excluded.due, learned_at = COALESCE(learned_at, excluded.learned_at),
-           right_count = right_count + excluded.right_count, wrong_count = wrong_count + excluded.wrong_count`
-      ).bind(user.id, course.id, nr.box, nr.due, day, r.ok ? 1 : 0, r.ok ? 0 : 1, cid, course.id));
+           right_count = excluded.right_count, wrong_count = excluded.wrong_count, hist = excluded.hist, last_seen = excluded.last_seen`
+      ).bind(user.id, course.id, p.box, p.due, p.learned_at, p.right_count, p.wrong_count, p.hist, p.last_seen, cid, course.id));
     }
     if (b.exam && Number.isFinite(+b.exam.total) && +b.exam.total > 0) {
       stmts.push(env.DB.prepare("INSERT INTO exams (id, user_id, course_id, day, score, total) VALUES (?, ?, ?, ?, ?, ?)")
