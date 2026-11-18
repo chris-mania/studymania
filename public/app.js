@@ -1595,6 +1595,15 @@ function mixPick(d, n, list = d.cards) {
   while (out.length < n && (w.length || r.length)) out.push((w.length && (Math.random() < 0.6 || !r.length) ? w : r).shift());
   return out;
 }
+// Games: "hard" = your hardest words first (missed, then lowest score, then not learned yet);
+// "mix" = every word using the normal mix (mostly weak words, rotating through all the others).
+const gameWordsKey = (id) => "sm-gwords-" + id;
+function gamePick(d, n, list) {
+  if (store.get(gameWordsKey(d.course.id), "mix") !== "hard") return mixPick(d, n, list);
+  const missed = new Set(missedList(d)), shown = store.get(shownKey(d), []), recent = new Set(shown.slice(-6));
+  const rank = (k) => (missed.has(k.id) ? -10 : 0) + (isLearned(d, k) ? need(d, k) : 25) + (recent.has(k.id) ? 2 : 0) + Math.random() * 1.2;
+  return list.map((k) => [rank(k), k]).sort((a, b) => a[0] - b[0]).map((x) => x[1]).slice(0, n);
+}
 const maskTerm = (text, k) => {
   const names = [k.term, k.full].filter(Boolean).map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   return String(text || "").replace(new RegExp(`\\b(${names.join("|")})\\b`, "gi"), "____");
@@ -1877,10 +1886,16 @@ route(/^\/games\/([\w-]+)$/, async (id) => {
   const best = (g) => store.get(`sm-game-${g}-${id}`, null), sets = sortSets(d);
   app.innerHTML = `${topbar(`/study/${id}`)}<div class="stack">
     <div>${classTag(d.course)}<div class="kicker" style="color:var(--rev)">Games</div><h1 style="margin-top:4px">Learn it by playing</h1>
-    <p class="muted">Mostly your weak words, mixed with all the rest. Anything you miss goes on your missed words.</p></div>
+    <p class="muted">At the end, you pick which misses go on your missed words.</p></div>
+    <div class="card stack" style="gap:8px"><b style="font-size:15px">Which words?</b>
+      <div class="seg wrap" role="group" aria-label="Which words">${[["hard", "My hardest words first"], ["mix", "Every word, mixed"]].map(([v, l]) => `<button type="button" data-gw="${v}" aria-pressed="${store.get(gameWordsKey(id), "mix") === v}">${l}</button>`).join("")}</div>
+      <p class="small muted" style="margin:0" id="gw-note"></p></div>
     <div class="ggrid">${GAMES.map(([k, n, desc, u]) => { const off = (k === "sort" && !sets.length) || (k !== "sort" && d.cards.length < 4);
       return `<a class="gtile ${off ? "off" : ""}" href="${off ? "#/games/" + id : `#/game/${id}/${k}`}"><span class="gico" aria-hidden="true">${{ fall: "🌧", match: "🧩", sort: "🗂", tf: "⚡" }[k]}</span><b>${n}</b><span>${off ? (k === "sort" ? "Needs \"A vs B\" cards in this class." : "Needs at least 4 words.") : desc}</span><span class="best">${best(k) != null ? `Best: ${best(k)} ${u}` : "Not played yet"}</span></a>`; }).join("")}</div>
   </div>`;
+  const note = () => { $("gw-note").textContent = store.get(gameWordsKey(id), "mix") === "hard" ? "Starts with words you missed and the ones you know least." : "Mostly weak words, mixed with all the rest, so you see every word over time."; };
+  app.querySelectorAll("[data-gw]").forEach((b) => (b.onclick = () => { store.set(gameWordsKey(id), b.dataset.gw); app.querySelectorAll("[data-gw]").forEach((x) => x.setAttribute("aria-pressed", x === b)); note(); }));
+  note();
 });
 route(/^\/game\/([\w-]+)\/(fall|match|sort|tf)$/, async (id, kind) => {
   setCurClass(id);
@@ -1943,7 +1958,7 @@ route(/^\/game\/([\w-]+)\/(fall|match|sort|tf)$/, async (id, kind) => {
     const maxY = () => arena.clientHeight - drop.offsetHeight - 8;
     const spawn = () => {
       if (!alive()) return;
-      if (!bag.length) bag = mixPick(d, words.length, words).filter((k) => k !== G.cur);
+      if (!bag.length) bag = gamePick(d, words.length, words).filter((k) => k !== G.cur);
       const k = bag.shift() || words[0]; G.cur = k; markShown(d, [k]);
       G.opts = shuffle([k, ...distract(k, Math.min(3, words.length - 1))]);
       drop.className = "drop"; drop.textContent = maskTerm(k.simple, k); G.y = 0; G.pause = false; drop.style.transform = "translateY(0px)";
@@ -1979,7 +1994,7 @@ route(/^\/game\/([\w-]+)\/(fall|match|sort|tf)$/, async (id, kind) => {
     const words = d.cards.filter((k) => !isPair(k));
     app.innerHTML = hud(`<span>Pairs <b id="ms">0</b></span><span><b id="mt">45</b>s</span>`) + `<div class="gtimer"><i id="mbar" style="width:100%"></i></div><div class="mgrid" id="mg"></div></div>`;
     const deal = () => {
-      const ts = mixPick(d, Math.min(5, words.length), words); markShown(d, ts); G.done = 0; G.n = ts.length;
+      const ts = gamePick(d, Math.min(5, words.length), words); markShown(d, ts); G.done = 0; G.n = ts.length;
       G.tiles = shuffle(ts.flatMap((k) => [{ k, side: "term", x: k.term }, { k, side: "def", x: maskTerm(k.simple, k) }]));
       $("mg").innerHTML = G.tiles.map((t, i) => `<button class="mt ${t.side}" data-i="${i}">${esc(t.x)}</button>`).join("");
     };
@@ -2013,7 +2028,7 @@ route(/^\/game\/([\w-]+)\/(fall|match|sort|tf)$/, async (id, kind) => {
     // Sort It: examples from your "A vs B" cards. 12 cards, mostly from your weak pair cards.
     const sets = sortSets(d);
     if (!sets.length) { toast("Sort It needs \"A vs B\" cards in this class."); return go(`/games/${id}`); }
-    const pickSets = mixPick(d, sets.length, sets.map((x) => x.k)).map((k) => sets.find((x) => x.k.id === k.id));
+    const pickSets = gamePick(d, sets.length, sets.map((x) => x.k)).map((k) => sets.find((x) => x.k.id === k.id));
     let items = shuffle(pickSets.flatMap((st) => st.b.flatMap((bk, j) => bk.items.map((x) => ({ x, st, j }))))).slice(0, 12);
     markShown(d, [...new Set(items.map((it) => it.st.k))]);
     Object.assign(G, { i: 0, score: 0, lock: false });
@@ -2047,7 +2062,7 @@ route(/^\/game\/([\w-]+)\/(fall|match|sort|tf)$/, async (id, kind) => {
       <div class="tfb"><button class="btn block" data-tf="0">False <kbd>←</kbd></button><button class="btn primary block" data-tf="1">True <kbd>→</kbd></button></div>
       <p class="small" id="tfx" style="min-height:44px"></p></div>`;
     const next = () => {
-      if (!bag.length) bag = mixPick(d, words.length, words);
+      if (!bag.length) bag = gamePick(d, words.length, words);
       G.cur = bag.shift(); markShown(d, [G.cur]); G.truth = Math.random() < 0.5;
       const other = distract(G.cur, 1)[0] || G.cur;
       $("tt").textContent = G.cur.term; $("td").textContent = "means: " + maskTerm(G.truth ? G.cur.simple : other.simple, G.cur); $("tc").className = "tfcard";
