@@ -271,7 +271,8 @@ function hatSVG(id) { // drawn for a head top at y=42
   }
 }
 function eggSVG(p, cracked) {
-  const c = hairHex(p.color);
+  // Same colors on every egg, so it doesn't give away what's inside.
+  p = { skin: "#f2c94c" }; const c = "#9cc8f5";
   return `<g class="p-wob"><path d="M60 14 C84 14 98 56 98 78 C98 100 82 112 60 112 C38 112 22 100 22 78 C22 56 36 14 60 14 Z" fill="#f4ead7"/>
     <circle cx="44" cy="60" r="7" fill="${p.skin}"/><circle cx="74" cy="46" r="5" fill="${c}"/><circle cx="78" cy="86" r="8" fill="${p.skin}"/><circle cx="46" cy="96" r="5" fill="${c}"/>
     ${cracked ? `<path d="M34 50 L44 58 L40 66 L50 72" fill="none" stroke="${INK}" stroke-width="2.5" stroke-linejoin="round"/><path d="M84 62 L76 70 L82 76" fill="none" stroke="${INK}" stroke-width="2.5" stroke-linejoin="round"/>` : ""}</g>`;

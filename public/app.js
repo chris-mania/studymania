@@ -849,8 +849,10 @@ function itemState(it) {
   if (owns(p, xp, it.id)) return (p.wear?.[it.slot] === it.id || p[it.slot] === it.id) ? "wearing" : "owned";
   return "buy";
 }
+// Until your egg hatches, items are shown on a plain grey stand-in, so the shop doesn't spoil what's inside.
+const MANNEQUIN = { species: "fuzz", skin: "#aab2c0", eye: "#555b66", hair: "buzz", color: "white", days: 60, owned: [], wear: {}, name: "" };
 function previewPet(it, size = 84, anim = false) {
-  const base = myPet() || SAMPLE_PET, p = { ...base, wear: { ...(base.wear || {}) } };
+  const mine = myPet(), base = !mine ? SAMPLE_PET : stageOf(mine.days).id === "egg" ? MANNEQUIN : mine, p = { ...base, wear: { ...(base.wear || {}) } };
   if (it.slot === "hair") p.hair = it.id; else if (it.slot === "color") p.color = it.id; else if (it.slot !== "freeze") p.wear[it.slot] = it.id;
   if (it.slot === "hat" || it.slot === "glasses") {} // keep the rest of the outfit so you see how it goes together
   return petSVG(p, { size, adult: stageOf(base.days).id !== "elder", stage: stageOf(base.days).id === "elder" ? "elder" : "adult", anim });
@@ -897,6 +899,7 @@ route(/^\/shop$/, () => {
     const section = (title, list, note = "") => list.length ? `<h3 class="shop-h">${title}</h3>${note ? `<p class="muted small" style="margin:-4px 0 6px">${note}</p>` : ""}<div class="igrid">${list.map(tile).join("")}</div>` : "";
     app.innerHTML = `${topbar("/")}<div class="stack">
       <div class="spread"><h1 style="margin:0">Shop</h1><span class="pill pts">🪙 ${fmt(ME.user.points || 0)}</span></div>
+      ${p && stageOf(p.days).id === "egg" ? `<p class="muted small">Your egg hasn't hatched yet, so items are shown on a stand-in. Anything you buy will be waiting when it hatches.</p>` : ""}
       ${p ? `<a class="lockerlink" href="#/locker"><div>${petSVG(p, { size: 64 })}</div><div class="grow"><b>${petName(p)}'s locker room</b><span class="muted small">Change outfits, hair and name</span></div><span class="go-arrow">›</span></a>`
         : `<section class="card eggcard"><div class="ec-egg">${petSVG({ ...SAMPLE_PET, days: 0 }, { stage: "egg", size: 70 })}</div><div class="grow stack" style="gap:6px"><b>Claim your free Maniac egg first</b><span class="muted small">Comes with 🪙 1,000 points to spend here.</span><div><button class="btn primary sm" id="egg-claim">Claim it</button></div></div></section>`}
       <p class="muted small">Points come from every lesson, review, practice exam and game (same as the XP you earn). Spending points never lowers your rank.</p>
