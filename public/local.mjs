@@ -1,5 +1,5 @@
 // No-account mode: the same API as the server, but everything lives in this browser.
-import { addDays, daysBetween, isDay, nextReview, summarize, mastery, addHist, pullDue, cleanCard, cleanQuestion, mergeMissed } from "./shared.mjs";
+import { addDays, daysBetween, isDay, nextReview, summarize, mergeBest, mastery, addHist, pullDue, cleanCard, cleanQuestion, mergeMissed } from "./shared.mjs";
 
 const KEY = "sm-guest-data";
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
@@ -96,6 +96,10 @@ export async function localApi(path, method, body, day) {
       c.questions = c.questions.filter((q) => topics.has(q.topic || ""));
       c.missed = mergeMissed(c.missed, [], [...ids]);
       save(d); return { ok: true, deleted: ids.size };
+    }
+    if (sub === "/game-best" && method === "POST") {
+      c.games = JSON.stringify(mergeBest(c.games, String(b.kind || ""), b.score));
+      save(d); return { games: JSON.parse(c.games) };
     }
     if (sub === "/missed" && method === "POST") {
       const ids = new Set(c.cards.map((k) => k.id));

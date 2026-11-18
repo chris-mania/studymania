@@ -1,7 +1,7 @@
 // Study Mania API (Cloudflare Worker + D1)
 import { sendPush } from "./webpush.js";
 import { ensureDb } from "./migrate.js";
-import { addDays, daysBetween, isDay, nextReview, summarize, mastery, addHist, pullDue, cleanCard, cleanQuestion, weekStart, secondReminderHour, mergeMissed } from "../public/shared.mjs";
+import { addDays, daysBetween, isDay, nextReview, summarize, mergeBest, mastery, addHist, pullDue, cleanCard, cleanQuestion, weekStart, secondReminderHour, mergeMissed } from "../public/shared.mjs";
 
 const SESSION_DAYS = 60;
 const MAX_CARDS_PER_COURSE = 800;
@@ -444,6 +444,12 @@ async function api(req, env, url) {
         env.DB.prepare("UPDATE courses SET missed = ? WHERE id = ?").bind(JSON.stringify(mergeMissed(course.missed, [], ids)), course.id),
       ]);
       return json({ ok: true, deleted: ids.length });
+    }
+    if (sub === "/game-best" && method === "POST") {
+      const b = await readBody(req);
+      const best = mergeBest(course.games, String(b.kind || ""), b.score);
+      await env.DB.prepare("UPDATE courses SET games = ? WHERE id = ?").bind(JSON.stringify(best), course.id).run();
+      return json({ games: best });
     }
     if (sub === "/missed" && method === "POST") {
       // Words you got wrong in this subject (cram, speed round, practice exam). Merged here so two devices don't overwrite each other.

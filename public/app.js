@@ -1,5 +1,5 @@
 /* Study Mania — app screens */
-import { addDays, daysBetween, niceDate, buildLessons, planFor, lessonsAndPlan, isTricky, pickThrowbacks, secondReminderHour, mergeMissed, mastery, needsRetest, needScore } from "./shared.mjs";
+import { addDays, daysBetween, niceDate, buildLessons, planFor, lessonsAndPlan, isTricky, pickThrowbacks, secondReminderHour, mergeMissed, mastery, needsRetest, needScore, parseBest, GAME_KINDS } from "./shared.mjs";
 import { localApi, hasGuestData, guestExport, clearGuest } from "./local.mjs";
 
 // ---------- helpers ----------
@@ -1915,7 +1915,10 @@ const sortSets = (d) => d.cards.filter(isPair).map((k) => ({ k, name: k.term, b:
 route(/^\/games\/([\w-]+)$/, async (id) => {
   let d;
   try { d = await loadCourse(id); } catch (e) { toast(e.message); return go("/"); }
-  const best = (g) => store.get(`sm-game-${g}-${id}`, null), sets = sortSets(d);
+  // Best scores live on your account (so they follow you to any device); older ones on this device are uploaded once.
+  const acct = parseBest(d.course.games);
+  for (const g of GAME_KINDS) { const loc = store.get(`sm-game-${g}-${id}`, null); if (loc != null && (acct[g] == null || loc > acct[g])) { acct[g] = loc; api(`/courses/${id}/game-best`, { method: "POST", body: { kind: g, score: loc } }).catch(() => {}); } }
+  const best = (g) => acct[g] ?? null, sets = sortSets(d);
   app.innerHTML = `${topbar(`/study/${id}`)}<div class="stack">
     <div>${classTag(d.course)}<div class="kicker" style="color:var(--rev)">Games</div><h1 style="margin-top:4px">Learn it by playing</h1>
     <p class="muted">At the end, you pick which misses go on your missed words.</p></div>
@@ -1942,8 +1945,14 @@ route(/^\/game\/([\w-]+)\/(fall|match|sort|tf)$/, async (id, kind) => {
   const distract = (k, n) => shuffle(d.cards.filter((x) => x.id !== k.id && !isPair(x))).slice(0, n);
   const over = async (score, higherBetter = true) => {
     stop();
-    const key = `sm-game-${kind}-${id}`, prev = store.get(key, null), isBest = prev == null || (higherBetter ? score > prev : score < prev);
-    if (isBest) store.set(key, score);
+    const key = `sm-game-${kind}-${id}`, acctPrev = parseBest(d.course.games)[kind], locPrev = store.get(key, null);
+    const prev = acctPrev == null ? locPrev : locPrev == null ? acctPrev : Math.max(acctPrev, locPrev);
+    const isBest = prev == null || (higherBetter ? score > prev : score < prev);
+    if (isBest) {
+      store.set(key, score);
+      d.course.games = JSON.stringify({ ...parseBest(d.course.games), [kind]: score });
+      api(`/courses/${id}/game-best`, { method: "POST", body: { kind, score } }).catch(() => {});
+    }
     const missIds = [...new Set(G.missed.map((k) => k.id))];
     // Games are fast, so misses are NOT saved on their own: you pick which ones (if any) go to your missed words.
     // Right answers still count toward how well you know each word.

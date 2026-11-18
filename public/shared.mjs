@@ -93,6 +93,18 @@ export function pullDue(due, m, day) {
   return cap && (!due || cap < due) ? cap : due;
 }
 
+// Game best scores, saved on the class so they follow your account. Higher is better in every game.
+export const GAME_KINDS = ["fall", "match", "sort", "tf"];
+const LOWER_BETTER = {};
+export function parseBest(json) { try { const o = JSON.parse(json || "{}"); return o && typeof o === "object" ? o : {}; } catch { return {}; } }
+export function mergeBest(json, kind, score) {
+  const o = parseBest(json), n = Number(score);
+  if (!GAME_KINDS.includes(kind) || !Number.isFinite(n) || n < 0 || n > 1e6) return o;
+  const prev = o[kind];
+  if (prev == null || (LOWER_BETTER[kind] ? n < prev : n > prev)) o[kind] = Math.round(n * 10) / 10;
+  return o;
+}
+
 // Monday of the week a day falls in (for the weekly leaderboard).
 export function weekStart(day) {
   const dow = new Date(day + "T12:00:00Z").getUTCDay(); // 0 = Sunday
