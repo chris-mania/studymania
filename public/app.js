@@ -238,7 +238,7 @@ function authView(mode, { upgrade } = {}) {
     ${upgrade ? `<div class="topbar"><a class="iconbtn" href="#/settings" aria-label="Back">‹</a><span></span></div>` : `
     <div class="hero welcome">
       <span class="logo" role="img" aria-label="Study Mania"><img class="lg-light" src="/logo-light.png" alt=""><img class="lg-dark" src="/logo-dark.png" alt=""></span>
-      <h1 class="w-punch"><span>Stop cramming</span> <span class="w-blue">the night before.</span></h1>
+      <h1 class="w-punch"><span>Stop cramming for exams</span> <span class="w-blue">the night before.</span></h1>
       <p class="muted w-sub">Do a few tiny lessons a day from <b>your own class notes</b>, and walk into the exam ready.</p>
     </div>
     <div class="how card how-short">
