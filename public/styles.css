@@ -494,3 +494,6 @@ details summary{list-style:revert}
 .gword span{font-size:14px;color:var(--muted)}
 .mrm{flex:none;min-height:40px;padding:0 12px;border-radius:10px;border:1.5px solid var(--line);background:transparent;color:var(--muted);font:inherit;font-size:13px;font-weight:700;cursor:pointer}
 .mrm:hover{color:var(--bad);border-color:var(--bad)}
+.picknote{margin:0;padding:8px 10px;border-radius:10px;background:color-mix(in srgb,var(--bad) 10%,transparent);border-left:3px solid var(--bad)}
+.droppick{display:block;margin-top:6px;font-size:.85em;opacity:.85}
+.picknote.fix{background:color-mix(in srgb,var(--good) 10%,transparent);border-left-color:var(--good)}

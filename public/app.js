@@ -1269,7 +1269,13 @@ function tfQ(d, k) {
   if (k.question) return meaningQ(d, k);
   const truth = Math.random() < 0.5 || !(k.traps || []).length;
   const stmt = truth ? k.answer : k.traps[(Math.random() * k.traps.length) | 0];
-  return { k, topic: k.topic, html: `True or false?<span class="sub"><b>${esc(k.term)}</b>: ${esc(stmt)}</span>`, opts: ["True", "False"], ans: truth ? "True" : "False", why: `${k.term}: ${k.simple}` };
+  return { k, topic: k.topic, html: `True or false?<span class="sub"><b>${esc(k.term)}</b>: ${esc(stmt)}</span>`, opts: ["True", "False"], ans: truth ? "True" : "False", why: `${k.term}: ${k.simple}`, stmt: truth ? null : stmt };
+}
+// A false true/false statement: say what the right answer would have been (shown even when you got it right).
+function falseFix(d, q) {
+  if (!q?.stmt || !q.k) return "";
+  const w = whatPicked(d, q.stmt, q.k.answer);
+  return `<p class="small picknote fix">It's false. <b>${esc(q.k.term)}</b> actually means: ${esc(q.k.answer || q.k.simple)}${w && w.term !== q.k.term ? ` That statement describes <b>${esc(w.term)}</b>.` : ""}</p>`;
 }
 // ---- Cards with 2-3 look-alike terms ("A vs. B vs. C") ----
 // Each time, a different term is tested, and the clue is a tricky situation, an example or a meaning.
@@ -1475,7 +1481,7 @@ route(/^\/s\/([\w-]+)\/(next|review|quiz|lesson|misses)(?:\/(\d+|all))?$/, async
     }
     const praise = S.combo >= 5 ? `${S.combo} in a row!` : ["Nice!", "Correct!", "You got it!", "Yes!"][(Math.random() * 4) | 0];
     $("fb").innerHTML = `<div class="feedback ${ok ? "ok" : "no"}"><h3>${ok ? praise : idk ? "No problem. Here it is" : "Not quite"}</h3>
-      ${ok ? (k.hook ? `<p class="small">${esc(k.hook)}</p>` : "") : `${isPair(k) ? k.parts.map((p) => `<p class="small"><b>${esc(p.term)}</b>: ${esc(p.simple)}</p>`).join("") : `<p><b>${esc(k.term)}</b>: ${esc(k.simple)}</p>`}${k.confuse ? `<p class="small">${esc(k.confuse)}</p>` : ""}<p class="small muted">It'll come back in a moment.</p>`}
+      ${falseFix(d, q)}${ok ? (k.hook ? `<p class="small">${esc(k.hook)}</p>` : "") : `${btn ? pickedNote(d, q.opts[btn.dataset.j], q.ans) : ""}${isPair(k) ? k.parts.map((p) => `<p class="small"><b>${esc(p.term)}</b>: ${esc(p.simple)}</p>`).join("") : `<p><b>${esc(k.term)}</b>: ${esc(k.simple)}</p>`}${k.confuse ? `<p class="small">${esc(k.confuse)}</p>` : ""}<p class="small muted">It'll come back in a moment.</p>`}
       ${!ok && mode !== "learn" ? `<button class="btn ghost block" id="seecard">📖 See the card</button>` : ""}
       <button class="btn ${ok ? "good" : "bad"} block" id="cont">Continue</button></div>`;
     if ($("seecard")) $("seecard").onclick = () => cardSheet(k, d);
@@ -1603,6 +1609,22 @@ function gamePick(d, n, list) {
   const missed = new Set(missedList(d)), shown = store.get(shownKey(d), []), recent = new Set(shown.slice(-6));
   const rank = (k) => (missed.has(k.id) ? -10 : 0) + (isLearned(d, k) ? need(d, k) : 25) + (recent.has(k.id) ? 2 : 0) + Math.random() * 1.2;
   return list.map((k) => [rank(k), k]).sort((a, b) => a[0] - b[0]).map((x) => x[1]).slice(0, n);
+}
+// When you pick a wrong answer: what YOUR pick actually means, so you can see the difference.
+// Works when the pick is a word (shows its meaning) or a meaning (shows which word it belongs to).
+const normTxt = (t) => String(t || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+function whatPicked(d, picked, right) {
+  const t = normTxt(picked); if (!t || t === "true" || t === "false" || normTxt(right) === t) return null;
+  for (const k of d.cards) for (const c of isPair(k) ? k.parts.map((p) => ({ ...p, card: k })) : [{ ...k, card: k }]) {
+    const names = [c.term, c.full, c.full && `${c.term} (${c.full})`, c.full && `${c.full} (${c.term})`].filter(Boolean).map(normTxt);
+    if (names.includes(t)) return { term: c.term, simple: c.simple, isWord: true };
+    if ([c.simple, c.answer, c.simple && maskTerm(c.simple, c.card), c.answer && maskTerm(c.answer, c.card)].filter(Boolean).map(normTxt).includes(t)) return { term: c.term, simple: c.simple, isWord: false };
+  }
+  return null;
+}
+function pickedNote(d, picked, right) {
+  const w = whatPicked(d, picked, right); if (!w) return "";
+  return `<p class="small picknote">✗ ${w.isWord ? `You picked <b>${esc(w.term)}</b>. That means: ${esc(w.simple)}` : `The answer you picked is the meaning of <b>${esc(w.term)}</b>.`}</p>`;
 }
 const maskTerm = (text, k) => {
   const names = [k.term, k.full].filter(Boolean).map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
@@ -1820,9 +1842,14 @@ route(/^\/cram\/([\w-]+)\/(rapid|speed|missed|tricky|new)$/, async (id, mode) =>
     }
     const nextQ = () => { S.i++; draw(); };
     if (mode === "speed") return setTimeout(nextQ, ok ? 250 : 900);
-    if (ok) return setTimeout(nextQ, 550);
+    if (ok && !q.stmt) return setTimeout(nextQ, 550);
+    if (ok) {
+      $("fb").innerHTML = `<div class="feedback ok"><h3>Correct!</h3>${falseFix(d, q)}<button class="btn good block" id="cont">Next</button></div>`;
+      const fb = app.querySelector(".feedback"); app.querySelector(".sess").style.paddingBottom = fb.offsetHeight + 16 + "px";
+      $("cont").focus({ preventScroll: true }); $("cont").onclick = nextQ; return;
+    }
     const parts = isPair(k) ? k.parts.map((p) => `<p class="small"><b>${esc(p.term)}</b>: ${esc(p.simple)}</p>`).join("") : `<p><b>${esc(k.term)}</b>: ${esc(k.simple)}</p>`;
-    $("fb").innerHTML = `<div class="feedback no"><h3>${btn || (forced && !forced.idk) ? "Not quite" : "Here it is"}</h3>${parts}${k.confuse ? `<p class="small">${esc(k.confuse)}</p>` : ""}
+    $("fb").innerHTML = `<div class="feedback no"><h3>${btn || (forced && !forced.idk) ? "Not quite" : "Here it is"}</h3>${falseFix(d, q)}${btn ? pickedNote(d, q.opts[btn.dataset.j], q.ans) : ""}${parts}${k.confuse ? `<p class="small">${esc(k.confuse)}</p>` : ""}
       <p class="small muted">${staged ? (S.tries[k.id] <= 4 ? `${cardFirst ? "You'll see the card again in a moment, then" : "In a moment"} this word starts over until you get it.` : "Still on your missed list. We'll keep drilling it next time.") : "Saved to your missed words."}</p>
       <button class="btn ghost block" id="seecard">📖 See the card</button><button class="btn bad block" id="cont">Next</button></div>`;
     $("seecard").onclick = () => cardSheet(k, d);
@@ -1966,9 +1993,10 @@ route(/^\/game\/([\w-]+)\/(fall|match|sort|tf)$/, async (id, kind) => {
     };
     const lose = (clicked) => {
       G.pause = true; G.lives--; lives(); G.missed.push(G.cur); chime("bad"); buzz([30, 40, 30]);
-      drop.className = "drop no"; drop.innerHTML = `<b>${esc(G.cur.term)}</b> · ${esc(G.cur.simple)}`;
+      const pk = clicked != null && G.opts[clicked] && G.opts[clicked] !== G.cur ? G.opts[clicked] : null;
+      drop.className = "drop no"; drop.innerHTML = `<b>${esc(G.cur.term)}</b> · ${esc(G.cur.simple)}${pk ? `<span class="droppick">✗ <b>${esc(pk.term)}</b> · ${esc(pk.simple)}</span>` : ""}`;
       fo.querySelectorAll(".gopt").forEach((b, i) => { if (G.opts[i] === G.cur) b.classList.add("right"); else if (i === clicked) b.classList.add("wrong"); b.disabled = true; });
-      G.to = setTimeout(() => { if (!alive()) return; G.lives <= 0 ? over(G.score) : spawn(); }, 1700);
+      G.to = setTimeout(() => { if (!alive()) return; G.lives <= 0 ? over(G.score) : spawn(); }, pk ? 3000 : 1700);
     };
     fo.onclick = (e) => {
       const b = e.target.closest(".gopt"); if (!b || G.pause || G.dead) return;
@@ -2064,14 +2092,14 @@ route(/^\/game\/([\w-]+)\/(fall|match|sort|tf)$/, async (id, kind) => {
     const next = () => {
       if (!bag.length) bag = gamePick(d, words.length, words);
       G.cur = bag.shift(); markShown(d, [G.cur]); G.truth = Math.random() < 0.5;
-      const other = distract(G.cur, 1)[0] || G.cur;
+      const other = distract(G.cur, 1)[0] || G.cur; G.other = other;
       $("tt").textContent = G.cur.term; $("td").textContent = "means: " + maskTerm(G.truth ? G.cur.simple : other.simple, G.cur); $("tc").className = "tfcard";
       if (!G.truth && other === G.cur) G.truth = true;
     };
     const ans = (v) => {
       if (G.dead || G.lock) return; const ok = v === G.truth;
       if (ok) { G.score++; G.right.push(G.cur); $("tfx").textContent = ""; chime("good"); }
-      else { G.score = Math.max(0, G.score - 1); G.missed.push(G.cur); $("tfx").innerHTML = `<b>${esc(G.cur.term)}</b> means: ${esc(G.cur.simple)}`; chime("bad"); }
+      else { G.score = Math.max(0, G.score - 1); G.missed.push(G.cur); $("tfx").innerHTML = `<b>${esc(G.cur.term)}</b> means: ${esc(G.cur.simple)}${!G.truth && G.other !== G.cur ? `<br><span class="muted">That other meaning is <b>${esc(G.other.term)}</b>.</span>` : ""}`; chime("bad"); }
       $("bs").textContent = G.score; $("tc").className = "tfcard " + (ok ? "ok" : "no"); G.lock = true;
       G.to = setTimeout(() => { G.lock = false; if (alive()) next(); }, ok ? 220 : 1100);
     };
@@ -2174,7 +2202,7 @@ route(/^\/exam\/([\w-]+)$/, async (id) => {
         $("e-idk").hidden = true; $("e-foot").hidden = true;
         const why = q.why || (q.k ? `${q.k.term}: ${q.k.simple}` : "");
         $("fb").innerHTML = `<div class="feedback ${ok ? "ok" : "no"}"><h3>${ok ? "Correct!" : answers[i] === -1 ? "Here's the answer" : "Not quite"}</h3>
-          ${ok ? "" : `<p style="margin:0"><b>✓ ${esc(q.ans)}</b></p>`}${why ? `<p class="small" style="margin:0">${esc(why)}</p>` : ""}
+          ${ok ? "" : `${answers[i] >= 0 ? pickedNote(d, q.opts[answers[i]], q.ans) : ""}<p style="margin:0"><b>✓ ${esc(q.ans)}</b></p>`}${falseFix(d, q)}${why ? `<p class="small" style="margin:0">${esc(why)}</p>` : ""}
           <button class="btn primary block" id="e-next">${i === qs.length - 1 ? "See my score" : "Next"}</button></div>`;
         chime(ok ? "good" : "bad"); buzz(ok ? 8 : [20, 40, 20]);
         $("e-next").onclick = next; $("e-next").focus();
@@ -2207,8 +2235,8 @@ route(/^\/exam\/([\w-]+)$/, async (id) => {
         ${missCards.length ? `<button class="btn primary block" id="r-miss">Study the ${missCards.length === 1 ? "word" : missCards.length + " words"} you missed</button>` : ""}
         ${graded.some((g) => !g.ok) ? `<h3>What you missed</h3>${graded.filter((g) => !g.ok).map((g) => `<div class="card stack" style="gap:8px">
           <p class="prompt" style="font-size:18px">${g.q.html}</p>
-          ${g.pick !== null ? `<p class="small" style="color:var(--bad)">✗ You said: ${esc(g.q.opts[g.pick])}</p>` : `<p class="small muted">You said you didn't know</p>`}
-          <p class="small" style="color:var(--good)">✓ ${esc(g.q.ans)}</p>
+          ${g.pick !== null ? `<p class="small" style="color:var(--bad)">✗ You said: ${esc(g.q.opts[g.pick])}</p>${(() => { const w = whatPicked(d, g.q.opts[g.pick], g.q.ans); return w ? `<p class="small muted">${w.isWord ? `<b>${esc(w.term)}</b> means: ${esc(w.simple)}` : `That's the meaning of <b>${esc(w.term)}</b>.`}</p>` : ""; })()}` : `<p class="small muted">You said you didn't know</p>`}
+          <p class="small" style="color:var(--good)">✓ ${esc(g.q.ans)}</p>${falseFix(d, g.q)}
           ${g.q.why || g.q.k ? `<p class="small muted">${esc(g.q.why || (g.q.k.term + ": " + g.q.k.simple))}</p>` : ""}</div>`).join("")}` : ""}
         <div class="row"><button class="btn grow" id="r-again">Retake</button><a class="btn grow" href="#/c/${id}">Done</a></div>
       </div>`;
