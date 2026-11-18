@@ -502,19 +502,19 @@ function homeScreenSheet() {
   let tab = isIOS ? "iphone" : isSamsung ? "samsung" : isAndroid ? "android" : "iphone";
   const guides = {
     iphone: `<ol class="howto">
-        <li>Open <b>studymania.app</b> in <b>Safari</b>${isIOSChrome ? " (you're in Chrome right now, which works too: tap the <span class='kbd'>⬆︎</span> share icon at the top right)" : ""}.</li>
+        <li>Open <b>studymania.app</b> in a normal (not Private) <b>Safari</b> tab${isIOSChrome ? " (you're in Chrome right now, which works too: tap the <span class='kbd'>⬆︎</span> share icon at the top right)" : ""}.</li>
         <li>Tap the <b>Share</b> button <span class="kbd">⬆︎</span> (a square with an arrow, at the bottom). On newer iPhones, tap <span class="kbd">⋯</span> first, then <b>Share</b>.</li>
         <li>Scroll down and tap <b>Add to Home Screen</b> <span class="kbd">⊞</span>. If you see <b>Open as Web App</b>, leave it switched <b>on</b>.</li>
         <li>Tap <b>Add</b> at the top right.</li>
         <li>Open <b>Study Mania</b> from your home screen and sign in once there. That's where reminders work.</li></ol>`,
     samsung: `<ol class="howto">
-        <li>Open <b>studymania.app</b> in <b>Samsung Internet</b>.</li>
+        <li>Open <b>studymania.app</b> in a normal (not Secret) <b>Samsung Internet</b> tab.</li>
         <li>Tap the <b>menu</b> button <span class="kbd">≡</span> at the bottom right.</li>
         <li>Tap <b>Add page to</b>, then <b>Home screen</b>. (Some versions show an <b>Install</b> <span class="kbd">⤓</span> icon in the address bar instead. Tap that.)</li>
         <li>Tap <b>Add</b>, then open <b>Study Mania</b> from your home screen.</li></ol>
         <div class="notice small">Using <b style="display:inline">Chrome</b> on your Samsung? Use the "Android / Chrome" tab.</div>`,
     android: `<ol class="howto">
-        <li>Open <b>studymania.app</b> in <b>Chrome</b>.</li>
+        <li>Open <b>studymania.app</b> in a normal (not Incognito) <b>Chrome</b> tab.</li>
         <li>Tap <span class="kbd">⋮</span> at the top right.</li>
         <li>Tap <b>Install app</b> (or <b>Add to Home screen</b>), then <b>Install</b>.</li>
         <li>Open <b>Study Mania</b> from your home screen or app drawer.</li></ol>`,
@@ -522,6 +522,7 @@ function homeScreenSheet() {
   let el;
   const draw = () => {
     const html = `<h2>Add Study Mania to your home screen</h2>
+      <div class="notice warn small">🔒 <b style="display:inline">Use a normal tab, not Private or Incognito.</b> In a private tab your sign-in isn't saved, so you'd have to log in again every time.</div>
       ${!isMobile ? `<div class="notice small">You're on a computer. Do this on your <b style="display:inline">phone</b>: open <b style="display:inline">studymania.app</b> there. <button class="btn sm" id="hs-copy" style="margin-left:6px">Copy link</button></div>` : ""}
       ${installPrompt ? `<button class="btn primary block" id="hs-install">Install now (1 tap)</button>` : ""}
       <div class="tabs" role="group" aria-label="Phone type">${[["iphone", "iPhone"], ["samsung", "Samsung"], ["android", "Android / Chrome"]].map(([k, l]) => `<button type="button" data-tab="${k}" aria-pressed="${tab === k}">${l}</button>`).join("")}</div>
