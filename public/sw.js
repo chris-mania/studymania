@@ -1,6 +1,6 @@
 // Study Mania service worker: offline app shell + daily reminder notifications.
-const CACHE = "sm-v52";
-const SHELL = ["/", "/index.html", "/styles.css", "/app.js", "/prompt.js", "/shared.mjs", "/local.mjs", "/pet.mjs", "/manifest.webmanifest", "/icons/icon-192.png", "/logo-light.png", "/logo-dark.png"];
+const CACHE = "sm-v53";
+const SHELL = ["/", "/index.html", "/styles.css", "/app.js", "/prompt.js", "/shared.mjs", "/local.mjs", "/pet.mjs", "/manifest.webmanifest", "/icons/sm-icon-192.png", "/logo-light.png", "/logo-dark.png"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -31,7 +31,7 @@ self.addEventListener("push", (e) => {
       try { const r = await fetch("/api/nudge", { credentials: "same-origin" }); if (r.ok) msg = await r.json(); } catch {}
     }
     await self.registration.showNotification(msg.title, {
-      body: msg.body, icon: "/icons/icon-192.png", badge: "/icons/badge-96.png", tag: "daily", renotify: true,
+      body: msg.body, icon: "/icons/sm-icon-192.png", badge: "/icons/badge-96.png", tag: "daily", renotify: true,
     });
   })());
 });
