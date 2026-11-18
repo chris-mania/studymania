@@ -1,6 +1,7 @@
 /* Study Mania — app screens */
 import { addDays, daysBetween, niceDate, buildLessons, planFor, lessonsAndPlan, isTricky, pickThrowbacks, secondReminderHour, mergeMissed, mastery, needsRetest, needScore, parseBest, GAME_KINDS } from "./shared.mjs";
 import { localApi, hasGuestData, guestExport, clearGuest } from "./local.mjs";
+import { petSVG, emblemSVG, rankOf, allRanks, ITEMS, item, owns, inSeason, stageOf, nextStage, SPECIES_NAME, FREEZE_MAX, TIERS, TOP_XP } from "./pet.mjs";
 
 // ---------- helpers ----------
 const app = document.getElementById("app");
@@ -468,6 +469,7 @@ function topbar(back, { stats = true } = {}) {
     <div class="stats">
       ${stats ? `<span class="stat flame ${lit ? "" : "off"}" title="Day streak">🔥 ${u.streak}</span><span class="stat xp" title="Total XP">⚡ ${u.xp}</span>` : ""}
       <button class="iconbtn theme-btn" aria-label="Switch light or dark mode" title="Light / dark">${themeIcon()}</button>
+      <a class="iconbtn shopbtn" href="#/shop" aria-label="Shop">🛍️</a>
       <a class="iconbtn" href="#/settings" aria-label="Settings">⚙︎</a>
     </div></div>`;
 }
@@ -545,7 +547,7 @@ const curClass = () => { const c = store.get("sm-cur", null); return c && c.day 
 const setCurClass = (id) => store.set("sm-cur", { id, day: todayStr() });
 function upNext() {
   const cur = curClass();
-  const cs = ME.courses.filter((c) => c.total).sort((a, b) => (a.exam_date || a.finish_by || "9999").localeCompare(b.exam_date || b.finish_by || "9999"))
+  const cs = ME.courses.filter((c) => c.total && !c.archived).sort((a, b) => (a.exam_date || a.finish_by || "9999").localeCompare(b.exam_date || b.finish_by || "9999"))
     .sort((a, b) => (b.id === cur && b.plan.todayLeft > 0) - (a.id === cur && a.plan.todayLeft > 0));
   const f = (fn) => cs.find(fn);
   let c;
@@ -596,13 +598,17 @@ route(/^\/$/, () => {
         </div>
         <div class="grow hero-text">
           <div class="h2-streak">${user.streak}-day streak</div>
-          <p class="h2-goal ${G.done ? "done" : ""}">${G.done ? `✓ Done for today · ${did} of ${plural(goal, G.unit)}` : `${did} of ${plural(goal, G.unit)} today`}${G.bonus ? ` <span class="pill acc">+${G.bonus} bonus</span>` : ""}</p>
+          <p class="h2-goal ${G.done ? "done" : ""}">${user.paused_since ? "🏖️ On break · your streak is saved" : G.done ? `✓ Done for today · ${did} of ${plural(goal, G.unit)}` : `${did} of ${plural(goal, G.unit)} today`}${G.bonus ? ` <span class="pill acc">+${G.bonus} bonus</span>` : ""}</p>
         </div>
-        <div class="h2-pills"><span class="pill xp-pill">⚡ ${user.xp}</span>${user.freezes ? `<span class="pill" title="Streak freezes: each one covers a missed day">❄️ ${user.freezes}</span>` : ""}</div>
+        <div class="h2-pills"><a class="pill rankpill" href="#/ranks" aria-label="Your rank: ${esc(rankOf(user.xp).name)}">${emblemSVG(rankOf(user.xp), 22)}<span>${esc(rankOf(user.xp).name)}</span></a><span class="pill xp-pill">⚡ ${fmt(user.xp)}</span>${user.freezes ? `<span class="pill" title="Streak freezes: each one covers a missed day">❄️ ${user.freezes}</span>` : ""}</div>
       </div>
       ${courses.filter((c) => c.plan.perDay).length > 1 ? `<div class="classchips">${courses.filter((c) => c.plan.perDay).sort((a, b) => (a.id === curClass() ? -1 : b.id === curClass() ? 1 : 0)).map((c) => `<a class="cchip ${c.plan.todayLeft ? "" : "done"}" href="#/s/${c.id}/next" style="--sc:${colorVar(c.color)}"><span class="dot"></span><span class="cc-name">${esc(c.name)}</span><b>${c.plan.todayLeft ? `${c.plan.todayLeft} left` : "✓ done"}</b></a>`).join("")}</div>` : ""}
       <div class="week">${days.map((d) => `<div class="dayc ${hit.has(d) ? "hit" : ""} ${d === todayStr() ? "now" : ""}"><i>${hit.has(d) ? "🔥" : ""}</i>${"SMTWTFS"[new Date(d + "T12:00").getDay()]}</div>`).join("")}</div>
+      ${petSpot(G)}
     </section>
+    ${eggCard()}
+    ${user.paused_since ? `<section class="card breakcard"><b>🏖️ You're on break</b><span class="muted small">Your ${plural(user.streak || 0, "day")} streak is paused, no freezes needed. It starts again when you add a new class or study.</span><button class="btn sm" id="brk-off">End break</button></section>`
+      : allClassesDone() && !G.done ? `<section class="card breakcard"><b>🏖️ All your classes are done</b><span class="muted small">Between semesters? Pause your streak for free until you add a new class. No freezes used.</span><button class="btn sm primary" id="brk-on">Pause my streak</button></section>` : ""}
     ${back}
     ${courses.filter((c) => c.plan.more?.overdue).map((c) => `<div class="notice">📥 <b style="display:inline">New notes or slides for ${esc(c.name)} yet?</b> Add them so your plan stays right. <a href="#/add/${c.id}" style="font-weight:700">Add them</a> · <a href="#/c/${c.id}">That's everything</a></div>`).join("")}
     ${courses.reduce((a, c) => a + (c.plan.todayLeft || 0), 0) > 6 ? `<div class="notice warn"><b>Heads up: your subjects add up to ${courses.reduce((a, c) => a + (c.plan.todayLeft || 0), 0)} lessons today.</b> Exams close together? Start one earlier or add review days in its plan.</div>` : ""}
@@ -619,33 +625,31 @@ route(/^\/$/, () => {
         <span class="un-sub">${esc(nx.sub)}</span>
         <span class="btn primary block un-btn">${nx.k === "review" ? "Start review" : did ? "Keep going" : "Start"}</span>
       </a>${nx.k === "review" ? `<button class="btn ghost small" id="skip-rev" style="margin-top:-6px">Skip review for today. Go to a lesson instead</button>` : ""}` : !courses.length ? `<a class="upnext" href="#/add"><span class="kicker">Get started</span><span class="un-title">Add your first subject</span><span class="un-sub">Give your notes or slides to any AI with our prompt. Takes about 2 minutes.</span><span class="btn primary block un-btn">Add a subject</span></a>` : ""}
-    ${items.length && !G.done ? `<section class="stack" style="gap:8px"><h3>Also today</h3>
-      ${items.map((x) => `<a class="todo" href="#${x.lessons ? `/s/${x.c.id}/next` : x.due ? `/s/${x.c.id}/review` : `/exam/${x.c.id}`}" style="--sc:${colorVar(x.c.color)}">
-        <span class="dot"></span><div class="grow"><b>${esc(x.c.name)}</b><span class="muted small">${[x.lessons ? plural(x.lessons, "lesson") : "", x.due ? `🔁 ${x.due} to review` : "", x.review && !x.lessons && !x.due ? "Practice exam" : ""].filter(Boolean).join(" · ")}</span></div><span class="go-arrow">›</span></a>`).join("")}
-    </section>` : ""}
+    ${courses.length ? `<h3 style="margin:2px 0 -4px">Your classes</h3><div class="cgrid">${courses.map((c) => {
+      const pct = c.total ? Math.round((c.learned / c.total) * 100) : 0, n = c.exam_date ? daysUntil(c.exam_date) : null;
+      const due = reviewSkipped(c.id) ? 0 : c.due || 0, left = c.plan.todayLeft || 0, doneToday = c.plan.perDay && !left && c.plan.todayDone;
+      return `<a class="ctile ${c.archived ? "finished" : ""}" href="#/c/${c.id}" style="--sc:${colorVar(c.color)}">
+        <b class="ct-name">${esc(c.name)}</b>
+        ${c.archived ? `<span class="ct-exam">Finished ✓</span>` : examText(c) ? `<span class="ct-exam ${n !== null && n <= 7 ? "warn" : ""}">${examText(c)}</span>` : ""}
+        <div class="bar" role="img" aria-label="${pct}% learned"><i style="width:0" data-w="${pct}"></i></div>
+        <span class="ct-meta">${c.learned}/${c.total}${left ? ` · <b>${plural(left, "lesson")}</b>` : doneToday ? ` · <b class="ok">✓ done</b>` : ""}${due ? ` · 🔁 ${due}` : ""}</span>
+      </a>`;
+    }).join("")}<a class="ctile add" href="#/add"><span class="ct-plus">+</span>Add a class</a></div>` : ""}
     ${courses.some((c) => c.total) ? `<a class="cramcard" href="#/study">
       <span class="cc-icon" aria-hidden="true">⚡</span>
       <div class="grow"><b>Study &amp; Cram</b><span>${[dueAll ? `${dueAll} due` : "", missedAll ? `${missedAll} missed` : "", soon ? `${esc(soon.name)} exam ${daysUntil(soon.exam_date) ? `in ${plural(daysUntil(soon.exam_date), "day")}` : "today"}` : ""].filter(Boolean).join(" · ") || "Review, cram or take a practice exam"}</span></div>
       <span class="cc-go">Start</span>
     </a>` : ""}
-    ${courses.length ? `<h3 style="margin-top:4px">Your classes</h3>` : ""}
-    ${courses.map((c) => {
-      const pct = c.total ? Math.round((c.learned / c.total) * 100) : 0;
-      const n = c.exam_date ? daysUntil(c.exam_date) : null;
-      const doneToday = c.plan.perDay && !c.plan.todayLeft && c.plan.todayDone;
-      return `<a class="subj2" href="#/c/${c.id}" style="--sc:${colorVar(c.color)}">
-        <div class="spread"><b class="s2-name">${esc(c.name)}</b>${examText(c) ? `<span class="pill ${n !== null && n <= 7 ? "warn" : ""}">${examText(c)}</span>` : ""}</div>
-        <div class="s2-bar"><div class="bar" role="img" aria-label="${pct}% learned"><i style="width:0" data-w="${pct}"></i></div><span>${c.learned}/${c.total}</span></div>
-        <div class="s2-meta">${doneToday ? `<b class="ok">✓ Done today</b> · ` : c.plan.todayLeft ? `<b>${plural(c.plan.todayLeft, "lesson")} today</b> · ` : ""}${esc(c.plan.label)}</div>
-      </a>`;
-    }).join("")}
-    <a class="addsubj" href="#/add">+ Add a class</a>
   </div>`;
   requestAnimationFrame(() => setTimeout(() => {
     const f = app.querySelector(".streak-ring .fill"); if (f) f.style.strokeDashoffset = C * (1 - frac);
     app.querySelectorAll(".bar i[data-w]").forEach((i) => (i.style.width = i.dataset.w + "%"));
   }, 60));
-  wireSetup();
+  wireSetup(); wireEgg();
+  if ($("brk-on")) $("brk-on").onclick = async () => { try { const r = await api("/break", { method: "POST", body: { on: true } }); ME.user = { ...ME.user, ...r.user }; } catch (e) { return toast(e.message); } toast("Streak paused. Enjoy the break! 🏖️"); render(); };
+  if ($("brk-off")) $("brk-off").onclick = async () => { try { const r = await api("/break", { method: "POST", body: { on: false } }); ME.user = { ...ME.user, ...r.user }; } catch (e) { return toast(e.message); } toast("Welcome back! Study today to keep your streak going."); render(); };
+  // First time seeing ranks: show the rank your XP already earned.
+  if (store.get("sm-rank-seen", null) === null) { if ((user.xp || 0) > 0) queueOverlay(() => sleepMs(500).then(() => rankOverlay(rankOf(user.xp), { first: true }))); else store.set("sm-rank-seen", 0); }
   if ($("skip-rev")) $("skip-rev").onclick = () => { skipReview(nx.c.id); toast("Review skipped for today. Those words come back tomorrow."); render(); };
   loadLeaderPreview();
 });
@@ -663,9 +667,290 @@ async function loadLeaderPreview() {
     $("lb-xp").textContent = `${r.me?.score ?? 0} XP`;
     $("lb-faces").innerHTML = GUEST ? `<span class="lb-invite">Make an account to compete</span>`
       : alone ? `<span class="lb-invite">Invite friends to compete ›</span>`
-      : top.map((p, i) => `<span class="lb-face ${p.me ? "me" : ""}" style="--sc:${colorVar(i + 2)}" title="@${esc(p.username)} · ${p.score} XP">${esc((p.username || "?")[0].toUpperCase())}<i>${i + 1}</i></span>`).join("");
+      : top.map((p, i) => `<span class="lb-face ${p.me ? "me" : ""} ${p.pet ? "haspet" : ""}" style="--sc:${colorVar(i + 2)}" title="@${esc(p.username)} · ${p.score} XP">${p.pet ? petSVG(p.pet, { size: 34, anim: false }) : esc((p.username || "?")[0].toUpperCase())}<i>${i + 1}</i></span>`).join("");
   } catch { /* offline: keep the placeholder */ }
 }
+
+// Every class is finished (no lessons left and no exam coming): you can pause your streak for a break.
+const allClassesDone = () => ME.courses.length > 0 && ME.courses.every((c) => c.archived || (!c.next && !(c.exam_date && daysUntil(c.exam_date) >= 0)));
+// ---------- the Maniac pet, the shop, ranks ----------
+const myPet = () => (typeof ME !== "undefined" && ME?.user?.pet) || null;
+const petMode = () => store.get("sm-pet-mode", "on"); // on = in lessons too · end = only on the finish screen · off
+async function petPost(path, body = {}) { const r = await api(path, { method: "POST", body }); if (r.user) ME.user = { ...ME.user, ...r.user }; return r; }
+const fmt = (n) => Number(n || 0).toLocaleString();
+const SAMPLE_PET = { species: "fuzz", skin: "#7fd6bb", eye: "#8a5a2b", hair: "spiky", color: "pink", days: 60, owned: [], wear: {}, name: "" };
+const petName = (p) => (p?.name ? esc(p.name) : "Your Maniac");
+const stageLine = (p) => { const s = stageOf(p.days), n = nextStage(p.days); return `${s.name} · ${plural(p.days, "study day")}${n ? ` · ${n.name} at ${n.min}` : ""}`; };
+const shortName = (n) => (n.length <= 12 ? n : n.split(/\s+/).filter(Boolean).map((w) => w[0]).join("").toUpperCase().slice(0, 4));
+const sleepMs = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Big moments (new rank, growing up, hatching) play one at a time, on top of whatever screen is showing.
+let ovQ = Promise.resolve();
+const queueOverlay = (fn) => (ovQ = ovQ.then(fn).catch(() => {}));
+function overlay(html, cls = "") {
+  const el = document.createElement("div");
+  el.className = "ov " + cls; el.setAttribute("role", "dialog"); el.setAttribute("aria-modal", "true");
+  el.innerHTML = `<div class="ov-in">${html}</div>`;
+  document.body.appendChild(el);
+  requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add("show")));
+  return el;
+}
+const waitClose = (el) => new Promise((res) => {
+  const b = el.querySelector(".ov-ok"); b.focus({ preventScroll: true });
+  b.onclick = () => { el.classList.remove("show"); setTimeout(() => el.remove(), 260); res(); };
+});
+
+async function rankOverlay(r, { first = false } = {}) {
+  let count = null;
+  if (!GUEST) try { count = (await api(`/rank-count?min=${r.tier >= 12 ? TOP_XP : TIERS[r.tier][2]}`)).n; } catch {}
+  const el = overlay(`<div class="rk-stage"><div class="rk-rays"></div><div class="rk-em">${emblemSVG(r, 156)}</div></div>
+    <div class="kicker">${first ? "Your rank" : "New rank!"}</div><h1 class="ov-h">${esc(r.name)}</h1>
+    <p class="muted">${count ? `${fmt(count)} ${count === 1 ? "person has" : "people have"} reached ${esc(r.tierName)}${r.tier < 12 ? " or higher" : ""}. ` : ""}${first ? "Your rank comes from all the XP you've ever earned, and it never goes down." : ""}</p>
+    ${r.next ? `<p class="small muted">${fmt(r.next - (ME.user.xp || 0))} XP to the next rank.</p>` : ""}
+    <button class="btn primary block ov-ok">${first ? "Let's go" : "Nice"}</button>`, "rank");
+  store.set("sm-rank-seen", r.idx);
+  await sleepMs(500); chime("win"); confetti(first ? 0.9 : 1.5); buzz([20, 60, 20]);
+  await waitClose(el);
+}
+
+async function evolveOverlay(before, after) {
+  const p = myPet(); if (!p) return;
+  const hatch = before === "egg", next = nextStage(p.days);
+  const el = overlay(`<div class="evo-stage"><div class="evo-glow"></div>
+      <div class="evo-old">${petSVG(p, { stage: before, size: 176 })}</div>
+      <div class="evo-new">${petSVG(p, { stage: after, mood: "happy", size: 176 })}</div></div>
+    <div class="kicker evo-k">${hatch ? "Your egg is hatching!" : "Something's happening…"}</div>
+    <h1 class="ov-h evo-h">&nbsp;</h1><p class="muted evo-p">&nbsp;</p>
+    <button class="btn primary block ov-ok" style="visibility:hidden">${hatch ? "Hi there!" : "Awesome"}</button>
+    <p class="small muted evo-skip">Tap to skip</p>`, "evo");
+  let skip = false; const skipNow = () => (skip = true); el.addEventListener("click", skipNow);
+  const wait = async (ms) => { for (let t = 0; t < ms && !skip; t += 50) await sleepMs(50); };
+  const st = el.querySelector(".evo-stage");
+  await wait(500); st.classList.add("shake"); buzz(15);
+  await wait(1400); st.classList.add("flash"); buzz([10, 80, 10, 80, 10]);
+  await wait(1300);
+  el.removeEventListener("click", skipNow);
+  st.classList.add("done"); el.querySelector(".evo-skip").remove();
+  confetti(1.6); chime("win"); buzz([30, 80, 30]);
+  el.querySelector(".evo-k").textContent = hatch ? "It hatched!" : "It grew up!";
+  el.querySelector(".evo-h").textContent = hatch ? `It's a ${SPECIES_NAME[p.species]}!` : `${p.name || "Your Maniac"} is now a ${stageOf(p.days).name}!`;
+  el.querySelector(".evo-p").textContent = hatch ? "It grows a little every day you finish your lessons." : next ? `Next: ${next.name} after ${plural(next.min, "study day")}.` : "The wisest Maniac there is. The wizard hat is unlocked.";
+  el.querySelector(".ov-ok").style.visibility = "visible";
+  await waitClose(el);
+  if (hatch && !p.name) nameSheet();
+}
+
+function nameSheet(after) {
+  const p = myPet(); if (!p) return;
+  const el = sheet(`<h2>Name your Maniac</h2><div class="center">${petSVG(p, { size: 110 })}</div>
+    <label class="field">Name<input id="pn" maxlength="20" value="${esc(p.name || "")}" placeholder="Give it a name" autocomplete="off"></label>
+    <button class="btn primary block" id="pn-go">Save name</button>`);
+  const inp = el.querySelector("#pn"); setTimeout(() => inp.focus(), 150);
+  const save = async () => {
+    const name = inp.value.trim(); if (!name) return toast("Give it a name first.");
+    try { await petPost("/pet", { name }); } catch (e) { return toast(e.message); }
+    el.remove(); toast(`Say hi to ${name}!`); after ? after() : render();
+  };
+  el.querySelector("#pn-go").onclick = save;
+  inp.onkeydown = (e) => { if (e.key === "Enter") save(); };
+}
+async function claimEgg() {
+  try { await petPost("/pet/claim"); } catch (e) { return toast(e.message); }
+  confetti(1); chime("win");
+  toast("Your egg is yours! +1,000 points to spend in the shop.", 3500);
+  nameSheet(() => go("/locker"));
+}
+// Called when today's lessons are all done: one day of growing.
+async function petGrowDay() {
+  if (!myPet()) return;
+  let r; try { r = await petPost("/pet/grow"); } catch { return; }
+  if (!r.grew) return;
+  const p = myPet();
+  if (r.before !== r.after) queueOverlay(() => sleepMs(900).then(() => evolveOverlay(r.before, r.after)));
+  else { const n = nextStage(p.days); toast(`🌱 ${p.name || "Your Maniac"} grew a day${n ? `: ${plural(n.min - p.days, "more day")} until ${n.name}` : ""}.`, 3500); }
+}
+
+// The pet in the corner during questions: a tiny idle wiggle, a hop when you're right, a "yikes" when you're wrong.
+// It never covers the question and never makes you wait.
+new MutationObserver(() => {
+  const top = app.querySelector(".sesstop"), p = myPet();
+  if (!top || top.querySelector(".sesspet") || !p || petMode() !== "on") return;
+  const s = document.createElement("span"); s.className = "sesspet"; s.setAttribute("aria-hidden", "true");
+  const live = REACT && Date.now() < REACT.until; // a reaction still playing when the screen redraws
+  s.innerHTML = petSVG(p, { size: 44, mood: live ? REACT.mood : "idle" });
+  s.classList.toggle("big", !!(live && REACT.big));
+  top.appendChild(s);
+}).observe(app, { childList: true, subtree: true });
+let reactT = 0, REACT = null;
+function petReact(kind) { // good | bad | streak
+  const p = myPet(); if (!p || petMode() !== "on") return;
+  const ms = kind === "streak" ? 1800 : 1300;
+  REACT = { mood: kind === "bad" ? "yikes" : "happy", big: kind === "streak", until: Date.now() + ms };
+  const s = app.querySelector(".sesspet");
+  if (s) {
+    s.innerHTML = petSVG(p, { size: 44, mood: REACT.mood }); s.classList.toggle("big", REACT.big);
+    // An egg can't make faces, so it hops (right) or wobbles (wrong).
+    s.classList.remove("egg-hop", "egg-no"); void s.offsetWidth; if (stageOf(p.days).id === "egg") s.classList.add(kind === "bad" ? "egg-no" : "egg-hop");
+  }
+  clearTimeout(reactT);
+  reactT = setTimeout(() => { REACT = null; const t = app.querySelector(".sesspet"); if (t && myPet()) { t.innerHTML = petSVG(myPet(), { size: 44 }); t.classList.remove("big"); } }, ms);
+}
+// Game XP: a quarter of your score, at most 50 a game and 150 a day from games.
+function gameXp(score) {
+  const k = "sm-gamexp-" + todayStr(), used = store.get(k, 0), x = Math.max(0, Math.min(50, Math.round(score / 4), 150 - used));
+  store.set(k, used + x); return x;
+}
+
+// Home: the pet hanging out (asleep until you study), holding a sign with your exams.
+function petSpot(G) {
+  const p = myPet(); if (!p) return "";
+  const exams = ME.courses.filter((c) => c.exam_date && daysUntil(c.exam_date) >= 0).sort((a, b) => a.exam_date.localeCompare(b.exam_date)).slice(0, 3);
+  const sign = exams.length ? `<div class="psign" aria-label="Upcoming exams"><div class="ps-board">${exams.map((c) => { const n = daysUntil(c.exam_date); return `<div><span>${esc(shortName(c.name))}</span><b class="${n <= 2 ? "hot" : ""}">${n === 0 ? "today!" : n === 1 ? "tmrw" : n + "d"}</b></div>`; }).join("")}</div><i class="ps-post"></i></div>` : "";
+  const st = stageOf(p.days), awake = G.done || st.id === "egg";
+  return `<a class="petspot" href="#/locker" aria-label="${petName(p)}. Open the locker room">
+    <div class="ps-pet">${petSVG(p, { size: 88, mood: awake ? "idle" : "sleep" })}</div>
+    <div class="ps-info"><b>${petName(p)}</b><span>${st.id === "egg" ? `Egg · hatches in ${plural(Math.max(1, 3 - p.days), "study day")}` : stageLine(p)}</span>
+      <span class="ps-mood">${G.done ? "Happy you studied ✓" : st.id === "egg" ? "Finish today's lessons to help it hatch" : "Napping until you study 💤"}</span></div>
+    ${sign}</a>`;
+}
+function eggCard() {
+  if (myPet() || store.get("sm-egg-hidden", false)) return "";
+  return `<section class="card eggcard"><div class="ec-egg">${petSVG({ ...SAMPLE_PET, days: 0 }, { stage: "egg", size: 76 })}</div>
+    <div class="grow stack" style="gap:6px"><b>Claim your free Maniac egg</b><span class="muted small">A little study buddy. It hatches and grows every day you finish your lessons. Comes with 1,000 points for the shop.</span>
+    <div class="row" style="gap:8px"><button class="btn primary sm" id="egg-claim">Claim it</button><button class="btn ghost sm" id="egg-hide">Not now</button></div></div></section>`;
+}
+function wireEgg() {
+  if ($("egg-claim")) $("egg-claim").onclick = claimEgg;
+  if ($("egg-hide")) $("egg-hide").onclick = () => { store.set("sm-egg-hidden", true); toast("You can claim it anytime from the shop."); render(); };
+}
+
+// ---------- ranks ----------
+route(/^\/ranks$/, () => {
+  const xp = ME.user.xp || 0, me = rankOf(xp), list = allRanks();
+  const pct = me.next ? Math.round(((xp - me.min) / (me.next - me.min)) * 100) : 100;
+  app.innerHTML = `${topbar("/")}<div class="stack">
+    <section class="card rankhero"><div class="rh-em">${emblemSVG(me, 112)}</div>
+      <div class="grow"><div class="kicker">Your rank</div><h1 style="margin:2px 0 6px">${esc(me.name)}</h1>
+      <div class="bar" role="img" aria-label="${pct}% to the next rank"><i style="width:${pct}%;background:${me.color}"></i></div>
+      <p class="muted small" style="margin-top:6px">${me.next ? `${fmt(me.next - xp)} XP to ${esc(rankOf(me.next).name)}` : "The top rank. Legend."} · ${fmt(xp)} XP total</p></div></section>
+    <p class="muted small">Ranks come from all the XP you've ever earned, and never go down. Reaching Gold, Emerald, Diamond, Ruby and Champion also unlocks a shiny jacket for your Maniac.</p>
+    <div class="ranklist">${list.map((r) => `<div class="rrow ${r.idx === me.idx ? "me" : r.idx < me.idx ? "past" : "future"}">${emblemSVG(r, 40, { anim: r.idx === me.idx })}<b class="grow">${esc(r.name)}</b><span class="muted small">${fmt(r.min)} XP</span>${r.idx === me.idx ? `<span class="pill acc">You</span>` : r.idx < me.idx ? `<span class="ok">✓</span>` : ""}</div>`).join("")}</div>
+  </div>`;
+});
+
+// ---------- shop ----------
+const SHOP_SECTIONS = [["top", "Tops"], ["hat", "Hats"], ["glasses", "Glasses"], ["hair", "Hairstyles"], ["color", "Hair colors"]];
+function itemState(it) {
+  const p = myPet(), xp = ME.user.xp || 0;
+  if (it.slot === "freeze") return (ME.user.freezes || 0) >= FREEZE_MAX ? "full" : "buy";
+  if (it.rank != null) return rankOf(xp).tier >= it.rank ? (p?.wear?.top === it.id ? "wearing" : "owned") : "rank";
+  if (it.elder) return p && stageOf(p.days).id === "elder" ? (p.wear?.hat === it.id ? "wearing" : "owned") : "elder";
+  if (!p) return "buy";
+  if (owns(p, xp, it.id)) return (p.wear?.[it.slot] === it.id || p[it.slot] === it.id) ? "wearing" : "owned";
+  return "buy";
+}
+function previewPet(it, size = 84, anim = false) {
+  const base = myPet() || SAMPLE_PET, p = { ...base, wear: { ...(base.wear || {}) } };
+  if (it.slot === "hair") p.hair = it.id; else if (it.slot === "color") p.color = it.id; else if (it.slot !== "freeze") p.wear[it.slot] = it.id;
+  if (it.slot === "hat" || it.slot === "glasses") {} // keep the rest of the outfit so you see how it goes together
+  return petSVG(p, { size, adult: stageOf(base.days).id !== "elder", stage: stageOf(base.days).id === "elder" ? "elder" : "adult", anim });
+}
+function stateTag(it, st) {
+  if (st === "wearing") return `<span class="itag on">Wearing</span>`;
+  if (st === "owned") return `<span class="itag">Owned</span>`;
+  if (st === "rank") return `<span class="itag lock">🔒 ${esc(TIERS[it.rank][0])} rank</span>`;
+  if (st === "elder") return `<span class="itag lock">🔒 Wise elder</span>`;
+  if (st === "full") return `<span class="itag">Full (${FREEZE_MAX})</span>`;
+  return `<span class="itag price ${(ME.user.points || 0) < it.price ? "short" : ""}">🪙 ${fmt(it.price)}</span>`;
+}
+function itemSheet(it, redraw) {
+  const st = itemState(it), p = myPet(), pts = ME.user.points || 0;
+  const big = it.slot === "freeze" ? `<div class="bigicon">❄️</div>` : previewPet(it, 150, true);
+  const el = sheet(`<div class="center">${big}</div><h2 style="text-align:center;margin:4px 0 0">${esc(it.name)}</h2>
+    <p class="muted small" style="text-align:center">${it.slot === "freeze" ? `Saves your streak if you miss a day. You have ${ME.user.freezes || 0} of ${FREEZE_MAX}.` : it.rank != null ? `Free once you reach ${esc(TIERS[it.rank][0])} rank.` : it.elder ? "Unlocks when your Maniac becomes a wise elder (180 study days)." : it.season ? "Holiday item: only in the shop this month. Keep it forever." : !p ? "Claim your egg first to dress it up." : ""}</p>
+    <div class="stack" style="gap:8px">${
+      st === "buy" ? (!p && it.slot !== "freeze" ? `<button class="btn primary block" id="is-claim">Claim your free egg</button>`
+        : `<button class="btn primary block" id="is-buy" ${pts < it.price ? "disabled" : ""}>Buy for 🪙 ${fmt(it.price)}</button>${pts < it.price ? `<p class="small muted" style="text-align:center">You have 🪙 ${fmt(pts)}. ${fmt(it.price - pts)} more to go: points come from every lesson, review and game.</p>` : ""}`)
+      : st === "owned" ? `<button class="btn primary block" id="is-wear">Put it on</button>`
+      : st === "wearing" && ["top", "glasses", "hat"].includes(it.slot) ? `<button class="btn block" id="is-off">Take it off</button>` : ""}
+      <button class="btn ghost block" id="is-close">Close</button></div>`);
+  el.querySelector("#is-close").onclick = () => el.remove();
+  const after = () => { el.remove(); redraw(); };
+  if (el.querySelector("#is-claim")) el.querySelector("#is-claim").onclick = () => { el.remove(); claimEgg(); };
+  if (el.querySelector("#is-buy")) el.querySelector("#is-buy").onclick = async (e) => {
+    e.target.disabled = true;
+    try { await petPost("/shop/buy", { item: it.id }); } catch (er) { e.target.disabled = false; return toast(er.message); }
+    chime("win"); confetti(0.7); buzz([15, 40, 15]);
+    if (it.slot !== "freeze") { try { await petPost("/pet", ["hair", "color"].includes(it.slot) ? { [it.slot]: it.id } : { wear: { [it.slot]: it.id } }); } catch {} toast(`${esc(it.name)} is yours, and you're wearing it.`); }
+    else toast("Streak freeze added. ❄️");
+    after();
+  };
+  if (el.querySelector("#is-wear")) el.querySelector("#is-wear").onclick = async () => { try { await petPost("/pet", ["hair", "color"].includes(it.slot) ? { [it.slot]: it.id } : { wear: { [it.slot]: it.id } }); } catch (er) { return toast(er.message); } after(); };
+  if (el.querySelector("#is-off")) el.querySelector("#is-off").onclick = async () => { try { await petPost("/pet", { wear: { [it.slot]: null } }); } catch (er) { return toast(er.message); } after(); };
+}
+route(/^\/shop$/, () => {
+  const draw = () => {
+    const p = myPet(), T = todayStr();
+    const visible = ITEMS.filter((it) => inSeason(it, T));
+    const holiday = visible.filter((it) => it.season), jackets = visible.filter((it) => it.rank != null);
+    const tile = (it) => { const st = itemState(it); return `<button type="button" class="itile ${st}" data-it="${it.id}">${it.slot === "freeze" ? `<div class="bigicon sm">❄️</div>` : previewPet(it, 76)}<b>${esc(it.name)}</b>${stateTag(it, st)}</button>`; };
+    const section = (title, list, note = "") => list.length ? `<h3 class="shop-h">${title}</h3>${note ? `<p class="muted small" style="margin:-4px 0 6px">${note}</p>` : ""}<div class="igrid">${list.map(tile).join("")}</div>` : "";
+    app.innerHTML = `${topbar("/")}<div class="stack">
+      <div class="spread"><h1 style="margin:0">Shop</h1><span class="pill pts">🪙 ${fmt(ME.user.points || 0)}</span></div>
+      ${p ? `<a class="lockerlink" href="#/locker"><div>${petSVG(p, { size: 64 })}</div><div class="grow"><b>${petName(p)}'s locker room</b><span class="muted small">Change outfits, hair and name</span></div><span class="go-arrow">›</span></a>`
+        : `<section class="card eggcard"><div class="ec-egg">${petSVG({ ...SAMPLE_PET, days: 0 }, { stage: "egg", size: 70 })}</div><div class="grow stack" style="gap:6px"><b>Claim your free Maniac egg first</b><span class="muted small">Comes with 🪙 1,000 points to spend here.</span><div><button class="btn primary sm" id="egg-claim">Claim it</button></div></div></section>`}
+      <p class="muted small">Points come from every lesson, review, practice exam and game (same as the XP you earn). Spending points never lowers your rank.</p>
+      ${section("❄️ Streak freeze", visible.filter((it) => it.slot === "freeze"), `Saves your streak if you miss a day. Hold up to ${FREEZE_MAX}.`)}
+      ${section(new Date(T + "T12:00").getMonth() === 10 ? "🦃 Thanksgiving" : "🎄 Holiday", holiday, "Only in the shop this month. Yours to keep forever.")}
+      ${section("✨ Rank jackets", jackets, "Free when you reach the rank. Shiny.")}
+      ${SHOP_SECTIONS.map(([slot, title]) => section(title, visible.filter((it) => it.slot === slot && it.rank == null && !it.season))).join("")}
+    </div>`;
+    app.querySelectorAll("[data-it]").forEach((b) => (b.onclick = () => itemSheet(item(b.dataset.it), draw)));
+    if ($("egg-claim")) $("egg-claim").onclick = claimEgg;
+  };
+  draw();
+});
+
+// ---------- locker room ----------
+route(/^\/locker$/, () => {
+  let tab = "top";
+  const draw = () => {
+    const p = myPet();
+    if (!p) { app.innerHTML = `${topbar("/shop")}<div class="stack">${eggCard() || `<section class="card eggcard"><div class="grow stack" style="gap:8px"><b>No Maniac yet</b><button class="btn primary" id="egg-claim">Claim your free egg</button></div></section>`}</div>`; wireEgg(); if ($("egg-claim")) $("egg-claim").onclick = claimEgg; return; }
+    const st = stageOf(p.days), nx = nextStage(p.days), xp = ME.user.xp || 0, egg = st.id === "egg";
+    const prog = nx ? Math.round(((p.days - st.min) / (nx.min - st.min)) * 100) : 100;
+    const owned = ITEMS.filter((it) => it.slot === tab && owns(p, xp, it.id));
+    const cur = ["hair", "color"].includes(tab) ? p[tab] : p.wear?.[tab];
+    app.innerHTML = `${topbar("/")}<div class="stack">
+      <section class="card locker">
+        <div class="lk-stage"><div class="lk-floor"></div>${petSVG(p, { size: 180 })}</div>
+        <div class="lk-name"><h1>${petName(p)}</h1><button class="iconbtn" id="lk-rename" aria-label="Rename">✎</button></div>
+        <p class="muted small" style="margin:0">${egg ? `Egg · hatches after ${plural(3, "study day")} (${p.days} so far)` : `${SPECIES_NAME[p.species]} · ${stageLine(p)}`}</p>
+        ${nx ? `<div class="bar" role="img" aria-label="${prog}% to ${nx.name}" style="margin-top:8px"><i style="width:${prog}%"></i></div><p class="muted small" style="margin:4px 0 0">Grows on days you finish all your lessons. ${plural(nx.min - p.days, "more day")} to ${nx.name}.</p>` : ""}
+      </section>
+      ${egg ? `<p class="muted">Clothes and hair unlock once it hatches. You can still shop now; it'll wear them when it's out.</p>` : `
+      <div class="tabs lk-tabs" role="group" aria-label="What to change">${[["top", "Tops"], ["hat", "Hats"], ["glasses", "Glasses"], ["hair", "Hair"], ["color", "Color"]].map(([k, l]) => `<button type="button" data-tab="${k}" aria-pressed="${tab === k}">${l}</button>`).join("")}</div>
+      <div class="igrid">
+        ${["top", "glasses", "hat"].includes(tab) ? `<button type="button" class="itile ${!cur ? "wearing" : ""}" data-wear=""><div class="bigicon sm">🚫</div><b>None</b>${!cur ? `<span class="itag on">Wearing</span>` : ""}</button>` : ""}
+        ${owned.map((it) => `<button type="button" class="itile ${cur === it.id ? "wearing" : ""}" data-wear="${it.id}">${previewPet(it, 76)}<b>${esc(it.name)}</b>${cur === it.id ? `<span class="itag on">Wearing</span>` : ""}</button>`).join("")}
+      </div>
+      ${owned.length ? "" : `<p class="muted small">Nothing here yet.</p>`}`}
+      <a class="btn block" href="#/shop">🛍️ Get more in the shop · 🪙 ${fmt(ME.user.points || 0)}</a>
+      <div class="card stack" style="gap:8px"><b>Maniac during lessons</b>
+        <div class="seg" role="group" aria-label="Maniac during lessons">${[["on", "In the corner"], ["end", "Only at the end"], ["off", "Off"]].map(([v, l]) => `<button type="button" data-pm="${v}" aria-pressed="${petMode() === v}">${l}</button>`).join("")}</div>
+        <span class="muted small">"In the corner" shows it small next to the progress bar. It reacts to your answers but never covers the question.</span></div>
+    </div>`;
+    $("lk-rename").onclick = () => nameSheet(draw);
+    app.querySelectorAll("[data-tab]").forEach((b) => (b.onclick = () => { tab = b.dataset.tab; draw(); }));
+    app.querySelectorAll("[data-pm]").forEach((b) => (b.onclick = () => { store.set("sm-pet-mode", b.dataset.pm); draw(); }));
+    app.querySelectorAll("[data-wear]").forEach((b) => (b.onclick = async () => {
+      const id = b.dataset.wear || null;
+      try { await petPost("/pet", ["hair", "color"].includes(tab) ? { [tab]: id } : { wear: { [tab]: id } }); } catch (e) { return toast(e.message); }
+      buzz(8); draw();
+    }));
+  };
+  draw();
+});
 
 // ---------- leaderboard ----------
 route(/^\/leaderboard$/, async () => {
@@ -679,7 +964,7 @@ route(/^\/leaderboard$/, async () => {
     try {
       const r = await api(`/leaderboard?board=${board}`);
       const unit = board === "week" ? "XP" : "days";
-      $("lb-body").innerHTML = (r.top.length ? r.top.map((p) => `<div class="lbrow big ${p.me ? "me" : ""}"><span class="medal">${["🥇", "🥈", "🥉"][p.rank - 1] || `<span class="rk">${p.rank}</span>`}</span><b class="grow">@${esc(p.username)}${p.me ? " (you)" : ""}</b><span class="lbscore">${p.score} ${unit}</span></div>`).join("")
+      $("lb-body").innerHTML = (r.top.length ? r.top.map((p) => `<div class="lbrow big ${p.me ? "me" : ""}"><span class="medal">${["🥇", "🥈", "🥉"][p.rank - 1] || `<span class="rk">${p.rank}</span>`}</span><span class="lb-pet">${p.pet ? petSVG(p.pet, { size: 40, anim: false }) : ""}</span><div class="grow lb-who"><b>@${esc(p.username)}${p.me ? " (you)" : ""}</b><span class="lb-rank">${emblemSVG(rankOf(p.xp), 18, { anim: false })}${esc(rankOf(p.xp).name)}${p.pet?.name ? ` · ${esc(p.pet.name)}` : ""}</span></div><span class="lbscore">${fmt(p.score)} ${unit}</span></div>`).join("")
         : `<div class="card"><p class="muted">Nobody's on this board yet. Be the first.</p></div>`) +
         `<p class="muted small" style="margin-top:6px">${GUEST ? `<a href="#/join">Make an account</a> to join the leaderboard.` : r.hidden ? "You're hidden. Turn it back on in Settings." : r.me?.rank ? `You're #${r.me.rank} with ${r.me.score} ${unit}.` : board === "week" ? "Earn XP this week to get ranked." : "Start a streak to get ranked."} ${board === "week" ? "Resets every Monday." : ""} ${r.players === 1 ? "1 person" : r.players + " people"} on Study Mania.</p>`;
     } catch (e) { $("lb-body").innerHTML = `<p class="err">${esc(e.message)}</p>`; }
@@ -1100,10 +1385,21 @@ route(/^\/c\/([\w-]+)$/, async (id) => {
         <a class="btn primary block" href="#/add/${c.id}">+ Add more notes or slides</a>
         <p class="muted small">Got new notes or slides? Add them here. They join this subject and your plan updates.</p>
         <button class="btn ghost" id="c-mark">Mark lessons I already know</button>
-        <button class="btn ghost danger" id="c-del">Delete this subject</button>
+      </div>
+      <div class="card stack" id="c-done">
+        ${c.archived ? `<h3>✓ Finished class</h3><p class="muted small">No daily lessons or reviews. Your words are still here for cram, games and practice exams.</p>
+          <button class="btn primary block" id="c-unfinish">Start lessons again</button>`
+        : `<h3>Done with this class?</h3><p class="muted small">${c.exam_date && daysUntil(c.exam_date) < 0 ? "Your exam has passed. " : ""}Pick what happens next.</p>
+          <button class="btn block" id="c-finish">Keep it, no more lessons<span class="btn-sub">Words stay for cram and practice. Nothing daily.</span></button>
+          <button class="btn block" id="c-newexam">Another exam coming<span class="btn-sub">Set the new date, then add the new notes</span></button>`}
+        <button class="btn ghost danger" id="c-del">Delete this class for good</button>
       </div>
     </div>`;
     if ($("c-next")) $("c-next").onclick = () => go(`/s/${id}/lesson/${nextL.n}`);
+    const setFinished = async (on) => { try { await api(`/courses/${id}/finish`, { method: "POST", body: { on } }); await loadMe(); } catch (e) { return toast(e.message); } toast(on ? "Class finished. Its words stay for cram and practice. ✓" : "Lessons are back on."); go(on ? "/" : `/c/${id}`); };
+    if ($("c-finish")) $("c-finish").onclick = () => setFinished(true);
+    if ($("c-unfinish")) $("c-unfinish").onclick = () => setFinished(false);
+    if ($("c-newexam")) $("c-newexam").onclick = async () => { if (c.archived) await setFinished(false); $("c-plan").click(); toast("Set the new exam date, then add your new notes."); };
     $("c-review").onclick = () => (due ? go(`/s/${id}/review/all`) : toast("Nothing due yet. Try rapid fire instead."));
     $("c-exam").onclick = () => go(`/exam/${id}`);
     $("c-plan").onclick = () => planSheet(c, draw);
@@ -1150,7 +1446,7 @@ route(/^\/c\/([\w-]+)$/, async (id) => {
     }));
     let armed = false;
     $("c-del").onclick = async () => {
-      if (!armed) { armed = true; $("c-del").textContent = "Tap again to delete for good"; setTimeout(() => { armed = false; if ($("c-del")) $("c-del").textContent = "Delete this subject"; }, 3000); return; }
+      if (!armed) { armed = true; $("c-del").textContent = "Tap again to delete for good"; setTimeout(() => { armed = false; if ($("c-del")) $("c-del").textContent = "Delete this class for good"; }, 3000); return; }
       await api(`/courses/${id}`, { method: "DELETE" }); await loadMe(); go("/");
     };
   };
@@ -1474,8 +1770,8 @@ route(/^\/s\/([\w-]+)\/(next|review|quiz|lesson|misses)(?:\/(\d+|all))?$/, async
     app.querySelectorAll(".opt").forEach((x) => { if (q.opts[x.dataset.j] === q.ans) x.classList.add("right"); else if (x !== btn) x.classList.add("dim"); x.disabled = true; });
     if (!ok && btn) btn.classList.add("wrong");
     if ($("idk")) $("idk").disabled = true;
-    if (ok) { S.combo++; S.best = Math.max(S.best, S.combo); S.right++; S.xp += first ? 10 : 5; chime("good"); buzz(15); }
-    else { S.combo = 0; if (!idk) { chime("bad"); buzz([30, 40, 30]); } if (!S.missed.includes(k.id)) S.missed.push(k.id); }
+    if (ok) { S.combo++; S.best = Math.max(S.best, S.combo); S.right++; S.xp += first ? 10 : 5; chime("good"); buzz(15); petReact(S.combo % 5 === 0 ? "streak" : "good"); }
+    else { S.combo = 0; if (!idk) { chime("bad"); buzz([30, 40, 30]); } petReact("bad"); if (!S.missed.includes(k.id)) S.missed.push(k.id); }
     if (st.tb) { if (!(k.id in S.tbResults)) S.tbResults[k.id] = ok; }
     else if ((mode === "learn" || kind === "misses") && st.t === "recap" && !(k.id in S.results)) S.results[k.id] = ok && !S.missed.includes(k.id);
     else if (mode === "review" && kind !== "misses" && !(k.id in S.results)) S.results[k.id] = ok;
@@ -1497,6 +1793,9 @@ route(/^\/s\/([\w-]+)\/(next|review|quiz|lesson|misses)(?:\/(\d+|all))?$/, async
   }
   async function finish() {
     S.xp += (mode === "learn" ? 20 : 0) + (S.asked && S.right === S.asked ? 10 : 0);
+    // +50 for the lesson that finishes today's goal.
+    const g = goalInfo();
+    if (mode === "learn" && !g.done && ME.courses.every((x) => !(x.plan?.todayLeft > 0) || (x.id === id && x.plan.todayLeft === 1))) S.xp += 50;
     const accuracy = S.asked ? Math.round((S.right / S.asked) * 100) : 100;
     let list = pending().filter((r) => kind !== "misses" || isLearned(d, { id: r.card_id }));
     if (mode === "learn") lesson.cards.forEach((k) => { if (!(k.id in S.results) && !S.sent.includes(k.id)) list.push({ card_id: k.id, ok: false, mode }); });
@@ -1540,7 +1839,7 @@ route(/^\/s\/([\w-]+)\/(next|review|quiz|lesson|misses)(?:\/(\d+|all))?$/, async
 });
 
 async function saveRound(body) {
-  const T = todayStr(), g0 = goalInfo(), before = { goalDone: g0.done, lit: ME.user.last_study_day === T };
+  const T = todayStr(), g0 = goalInfo(), before = { goalDone: g0.done, lit: ME.user.last_study_day === T }, xp0 = ME.user.xp || 0;
   let saved = null;
   try { saved = await postStudy(body); } catch (e) { toast(e.message); }
   if (saved) { ME.user = { ...ME.user, ...saved.user }; ME.today = saved.today; }
@@ -1553,6 +1852,8 @@ async function saveRound(body) {
     toast("Saved on this phone. It'll sync when you're back online.");
   }
   try { await loadMe(); } catch {}
+  const r0 = rankOf(xp0), r1 = rankOf(ME.user.xp);
+  if (r1.idx > r0.idx) queueOverlay(() => sleepMs(1400).then(() => rankOverlay(r1)));
   return { ...before, used_freeze: saved?.used_freeze || 0, earned_freeze: !!saved?.earned_freeze };
 }
 function celebrate(before, { xp, accuracy, best, text, title, after }) {
@@ -1567,7 +1868,7 @@ function celebrate(before, { xp, accuracy, best, text, title, after }) {
   const revC = after === "learn" && curC && curC.due > 0 && !reviewSkipped(curC.id) ? curC : null;
   const nn = upNext();
   app.innerHTML = `<div class="sess"><div class="cele">
-    <div class="big-emoji">${emoji}</div><h1>${head}</h1>
+    ${myPet() && petMode() !== "off" ? `<div class="cele-pet">${petSVG(myPet(), { size: 124, mood: "happy" })}</div>` : `<div class="big-emoji">${emoji}</div>`}<h1>${head}</h1>
     <p class="muted">${text} ${best >= 3 ? `Best run: ${best} in a row.` : ""}</p>
     <div class="tiles"><div class="tile xp"><b id="xpn">0</b><span>XP</span></div><div class="tile fl"><b>${ME.user.streak}</b><span>Streak</span></div><div class="tile acc"><b>${accuracy}%</b><span>Correct</span></div></div>
     ${extra}
@@ -1581,6 +1882,7 @@ function celebrate(before, { xp, accuracy, best, text, title, after }) {
     <button class="btn ${revC ? "" : "primary"} block" id="more">${G.done ? "Do a bonus round" : `Next ${G.unit} (${G.goal - G.did} to go)`}${nn && !G.done ? `<span class="btn-sub">${esc(nn.c.name)}${nn.k === "next" && nn.c.next ? ` · Lesson ${nn.c.next.n}` : ""}</span>` : ""}</button><a class="btn ghost block" href="#/">Done for now</a></div></div>`;
   countUp($("xpn"), xp); chime("win"); buzz([20, 60, 20, 60, 40]); confetti(goalHit || streakUp ? 1.6 : 0.8);
   $("more").onclick = () => startBest();
+  if (goalHit) petGrowDay();
   if (revC) $("go-rev").onclick = () => go(`/s/${revC.id}/review`);
 }
 
@@ -1838,9 +2140,9 @@ route(/^\/cram\/([\w-]+)\/(rapid|speed|missed|tricky|new)$/, async (id, mode) =>
     else if (it.st === 1) queue.splice(Math.min(S.i + 4, queue.length), 0, { k, st: 2 }); // second question a few words later
     else if (it.st === 2) { S.lastOk[k.id] = true; queue.push({ k, st: 3 }); } // learned! quick true/false bonus check at the end
     S.touched = S.touched || new Set(); S.touched.add(k.id);
-    if (ok) { (S.okIds ||= new Set()).add(k.id); S.right++; S.combo++; S.best = Math.max(S.best, S.combo); S.xp += mode === "speed" ? 3 : 5; chime("good"); buzz(10); if (!S.wrong.has(k.id)) S.fixed.add(k.id); }
+    if (ok) { (S.okIds ||= new Set()).add(k.id); S.right++; S.combo++; S.best = Math.max(S.best, S.combo); S.xp += mode === "speed" ? 3 : 5; chime("good"); buzz(10); petReact(S.combo % 5 === 0 ? "streak" : "good"); if (!S.wrong.has(k.id)) S.fixed.add(k.id); }
     else {
-      S.combo = 0; S.wrong.add(k.id); S.fixed.delete(k.id); if (btn || (forced && !forced.idk)) { chime("bad"); buzz([30, 40, 30]); }
+      S.combo = 0; S.wrong.add(k.id); S.fixed.delete(k.id); if (btn || (forced && !forced.idk)) { chime("bad"); buzz([30, 40, 30]); } petReact("bad");
       // Staged drills: the card comes back a few words later and the word starts over (up to 4 times).
       S.tries[k.id] = (S.tries[k.id] || 0) + 1;
       if (staged && S.tries[k.id] <= 4) queue.splice(Math.min(S.i + 3, queue.length), 0, { k, st: 1 });
@@ -1957,7 +2259,7 @@ route(/^\/game\/([\w-]+)\/(fall|match|sort|tf)$/, async (id, kind) => {
     // Games are fast, so misses are NOT saved on their own: you pick which ones (if any) go to your missed words.
     // Right answers still count toward how well you know each word.
     const results = practiceResults(d, G.right.map((k) => k.id), []);
-    await saveRound({ course_id: id, kind: "review", results, xp: Math.max(0, Math.round(score)) * 2, counts: G.right.length + G.missed.length >= 5 });
+    await saveRound({ course_id: id, kind: "review", results, xp: gameXp(score), counts: G.right.length + G.missed.length >= 5 });
     const uniq = missIds.map((cid) => d.cards.find((k) => k.id === cid)).filter(Boolean);
     const already = new Set(missedList(d));
     app.innerHTML = `<div class="sess"><div class="cele">
@@ -2218,7 +2520,7 @@ route(/^\/exam\/([\w-]+)$/, async (id) => {
         $("fb").innerHTML = `<div class="feedback ${ok ? "ok" : "no"}"><h3>${ok ? "Correct!" : answers[i] === -1 ? "Here's the answer" : "Not quite"}</h3>
           ${ok ? "" : `${answers[i] >= 0 ? pickedNote(d, q.opts[answers[i]], q.ans) : ""}<p style="margin:0"><b>✓ ${esc(q.ans)}</b></p>`}${falseFix(d, q)}${why ? `<p class="small" style="margin:0">${esc(why)}</p>` : ""}
           <button class="btn primary block" id="e-next">${i === qs.length - 1 ? "See my score" : "Next"}</button></div>`;
-        chime(ok ? "good" : "bad"); buzz(ok ? 8 : [20, 40, 20]);
+        chime(ok ? "good" : "bad"); buzz(ok ? 8 : [20, 40, 20]); petReact(ok ? "good" : "bad");
         $("e-next").onclick = next; $("e-next").focus();
       };
       if (S.instant && answers[i] !== null) return reveal();
@@ -2284,6 +2586,8 @@ route(/^\/settings$/, async () => {
         : `<div class="setrow"><span>Daily goal<br><span class="muted small">review rounds a day</span></span><div class="seg" role="group" aria-label="Rounds per day">${[1, 2, 3, 5].map((n) => `<button data-g="${n}" aria-pressed="${u.daily_goal === n}">${n}</button>`).join("")}</div></div>`}
       ${GUEST ? "" : `<div class="setrow"><span>Reminder time</span><select id="s-hour" aria-label="Reminder time">${hours}</select></div>`}
       ${GUEST ? "" : `<div class="setrow"><span>Show me on the leaderboard</span><div class="seg"><button id="s-lb" aria-pressed="${!u.lb_hidden}">${u.lb_hidden ? "Hidden" : "Shown"}</button></div></div>`}
+      <div class="setrow"><span>Maniac during lessons</span><div class="seg" role="group" aria-label="Maniac during lessons">${[["on", "Corner"], ["end", "End"], ["off", "Off"]].map(([v, l]) => `<button data-pm="${v}" aria-pressed="${petMode() === v}">${l}</button>`).join("")}</div></div>
+      ${!u.pet && store.get("sm-egg-hidden", false) ? `<div class="setrow"><span>Free Maniac egg</span><button class="btn sm" id="s-egg">Show it again</button></div>` : ""}
       <div class="setrow"><span>Sounds</span><div class="seg"><button id="s-snd" aria-pressed="${store.get("sm-sound", true)}">${store.get("sm-sound", true) ? "On" : "Off"}</button></div></div>
     </div>
     ${GUEST ? "" : `<div class="card stack"><h3>Daily reminders</h3><p class="muted small" id="n-status">Checking…</p>
@@ -2296,7 +2600,7 @@ route(/^\/settings$/, async () => {
       <button class="btn block" id="s-home">Show me how (iPhone, Samsung, Android)</button></div>
     <div class="card stack">
       ${GUEST ? `<button class="btn ghost danger" id="s-wipe">Erase everything on this device</button>` : `
-      <p class="muted small">Signed in as @${esc(u.username || "")} (${esc(u.email)}). Best streak: ${plural(u.best_streak || 0, "day")}. Streak freezes: ${u.freezes || 0} of 2. You earn one every 7 days in a row.</p>
+      <p class="muted small">Signed in as @${esc(u.username || "")} (${esc(u.email)}). Best streak: ${plural(u.best_streak || 0, "day")}. Streak freezes: ${u.freezes || 0} of 2. Get them in the <a href="#/shop">shop</a>.</p>
       <button class="btn block" id="s-out">Sign out</button><button class="btn ghost danger" id="s-del">Delete my account</button>`}
     </div></div>`;
   const patch = async (body) => { try { const r = await api("/me", { method: "PATCH", body }); ME.user = { ...ME.user, ...r.user }; toast("Saved."); } catch (e) { toast(e.message); } };
@@ -2306,6 +2610,8 @@ route(/^\/settings$/, async () => {
   app.querySelectorAll("[data-th]").forEach((b) => (b.onclick = () => { store.set("sm-theme", b.dataset.th); applyTheme(b.dataset.th); render(); }));
   if ($("s-hour")) $("s-hour").onchange = async (e) => { await patch({ remind_hour: +e.target.value, tz: tz() }); pushUI(); };
   app.querySelectorAll("[data-g]").forEach((b) => (b.onclick = async () => { await patch({ daily_goal: +b.dataset.g }); app.querySelectorAll("[data-g]").forEach((x) => x.setAttribute("aria-pressed", x === b)); }));
+  app.querySelectorAll("[data-pm]").forEach((b) => (b.onclick = () => { store.set("sm-pet-mode", b.dataset.pm); app.querySelectorAll("[data-pm]").forEach((x) => x.setAttribute("aria-pressed", x === b)); }));
+  if ($("s-egg")) $("s-egg").onclick = () => { store.set("sm-egg-hidden", false); go("/"); };
   $("s-snd").onclick = (e) => { const v = !store.get("sm-sound", true); store.set("sm-sound", v); e.target.textContent = v ? "On" : "Off"; e.target.setAttribute("aria-pressed", v); if (v) chime("good"); };
   if ($("s-signin")) $("s-signin").onclick = (e) => { e.preventDefault(); GUEST = false; store.set("sm-guest", false); ME = null; authView("login"); };
   if ($("s-home")) $("s-home").onclick = homeScreenSheet;

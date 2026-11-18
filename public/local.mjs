@@ -1,4 +1,5 @@
 // No-account mode: the same API as the server, but everything lives in this browser.
+import { newPet, cleanPet, stageOf, petEdit, shopBuy, STARTER_POINTS } from "./pet.mjs";
 import { addDays, daysBetween, isDay, nextReview, summarize, mergeBest, mastery, addHist, pullDue, cleanCard, cleanQuestion, mergeMissed } from "./shared.mjs";
 
 const KEY = "sm-guest-data";
@@ -18,13 +19,19 @@ export const clearGuest = () => { try { localStorage.removeItem(KEY); } catch {}
 const fail = (msg, status = 400) => { throw Object.assign(new Error(msg), { status }); };
 function streakState(u, day) {
   const streak = u.streak || 0;
+  if (u.paused_since) return { streak, protectedBy: 0 };
   if (!u.last_study_day || u.last_study_day === day || u.last_study_day === addDays(day, -1)) return { streak, protectedBy: 0 };
   const missed = daysBetween(u.last_study_day, day) - 1;
   return missed <= (u.freezes || 0) ? { streak, protectedBy: missed } : { streak: 0, protectedBy: 0 };
 }
+function endBreakLocal(u, day) {
+  const y = addDays(day, -1);
+  if ((u.streak || 0) > 0 && !(u.last_study_day > y)) u.last_study_day = y;
+  u.paused_since = null;
+}
 function pubUser(u, day) {
   const st = streakState(u, day);
-  return { ...u, streak: st.streak, freezes: u.freezes || 0, freeze_needed: st.protectedBy, guest: true, email: null, username: null, has_security: false };
+  return { ...u, streak: st.streak, freezes: u.freezes || 0, freeze_needed: st.protectedBy, guest: true, email: null, username: null, has_security: false, points: u.points || 0, pet: cleanPet(u.pet) };
 }
 function todayInfo(d, day) {
   const recent = Object.entries(d.days).filter(([k]) => k > addDays(day, -28)).sort().map(([k, v]) => ({ day: k, ...v }));
@@ -71,6 +78,7 @@ export async function localApi(path, method, body, day) {
     save(d); return { user: pubUser(d.user, day) };
   }
   if (path === "/courses" && method === "POST") {
+    if (d.user.paused_since) endBreakLocal(d.user, day);
     if (!String(b.name || "").trim()) fail("Give the subject a name.");
     const c = { id: uid(), name: String(b.name).trim().slice(0, 80), color: (parseInt(b.color, 10) || 0) % 8, ...planFields(b), cards: [], questions: [], progress: {}, exams: [], created_at: day };
     const r = addContent(c, b.cards, b.questions, day);
@@ -86,6 +94,7 @@ export async function localApi(path, method, body, day) {
       return { course, cards, questions, progress, exams: [...exams].reverse().slice(0, 10) };
     }
     if (!sub && method === "PATCH") { Object.assign(c, planFields(b, c)); if (b.name) c.name = String(b.name).slice(0, 80); save(d); return { ok: true }; }
+    if (sub === "/finish" && method === "POST") { c.archived = b.on ? 1 : 0; save(d); return { ok: true }; }
     if (!sub && method === "DELETE") { d.courses = d.courses.filter((x) => x !== c); save(d); return { ok: true }; }
     if (sub === "/cards" && method === "POST") { const r = addContent(c, b.cards, b.questions, day); save(d); return r; }
     if (sub === "/delete-cards" && method === "POST") {
@@ -134,19 +143,44 @@ export async function localApi(path, method, body, day) {
     if (b.exam?.total > 0) c.exams.push({ day, score: b.exam.score, total: b.exam.total });
     const xp = Math.min(800, Math.max(0, parseInt(b.xp, 10) || 0));
     const u = d.user, counts = b.counts !== false;
+    if (u.paused_since && counts) endBreakLocal(u, day);
     let usedFreeze = 0, earnedFreeze = false;
-    u.xp = (u.xp || 0) + xp;
+    u.xp = (u.xp || 0) + xp; u.points = (u.points || 0) + xp;
     if (counts && u.last_study_day !== day) {
       const st = streakState(u, day);
       if (st.protectedBy) { usedFreeze = st.protectedBy; u.freezes = (u.freezes || 0) - usedFreeze; u.streak = (u.streak || 0) + 1; }
       else u.streak = st.streak ? (u.streak || 0) + 1 : 1;
-      if (u.streak % 7 === 0 && (u.freezes || 0) < 2) { u.freezes = (u.freezes || 0) + 1; earnedFreeze = true; }
       u.best_streak = Math.max(u.best_streak || 0, u.streak); u.last_study_day = day;
     }
     const t = d.days[day] || {}, isLesson = counts && b.kind === "lesson";
     d.days[day] = { xp: (t.xp || 0) + xp, rounds: (t.rounds || 0) + (counts ? 1 : 0), lessons: (t.lessons || 0) + (isLesson ? 1 : 0), reviews: (t.reviews || 0) + (counts && !isLesson ? 1 : 0) };
     save(d); return { user: pubUser(u, day), today: todayInfo(d, day), used_freeze: usedFreeze, earned_freeze: earnedFreeze };
   }
+  // ---------- pet, shop (same rules as the server) ----------
+  if (path === "/pet/claim" && method === "POST") {
+    const u = d.user; if (!cleanPet(u.pet)) { u.pet = newPet(day); u.points = (u.points || 0) + STARTER_POINTS; save(d); }
+    return { user: pubUser(u, day) };
+  }
+  if (path === "/pet" && method === "POST") {
+    const u = d.user, pet = cleanPet(u.pet); if (!pet) fail("Claim your egg first.");
+    const r = petEdit(pet, b, u.xp); if (r.error) fail(r.error);
+    u.pet = pet; save(d); return { user: pubUser(u, day) };
+  }
+  if (path === "/shop/buy" && method === "POST") {
+    const u = d.user, pet = cleanPet(u.pet);
+    const r = shopBuy(pet, { points: u.points || 0, freezes: u.freezes || 0, xp: u.xp }, String(b.item || ""), day);
+    if (r.error) fail(r.error);
+    u.points = r.points; u.freezes = r.freezes; if (pet) u.pet = pet; save(d); return { user: pubUser(u, day) };
+  }
+  if (path === "/pet/grow" && method === "POST") {
+    const u = d.user, pet = cleanPet(u.pet); if (!pet) return { user: pubUser(u, day), grew: false };
+    const before = stageOf(pet.days).id;
+    if (pet.lastGrow === day) return { user: pubUser(u, day), grew: false, before, after: before };
+    pet.days += 1; pet.lastGrow = day; u.pet = pet; save(d);
+    return { user: pubUser(u, day), grew: true, before, after: stageOf(pet.days).id };
+  }
+  if (path === "/rank-count") return { n: null };
+  if (path === "/break" && method === "POST") { if (b.on) d.user.paused_since = day; else endBreakLocal(d.user, day); save(d); return { user: pubUser(d.user, day) }; }
   if (path.startsWith("/push")) fail("Daily reminders need an account. Create one in Settings.");
   if (path === "/logout") return { ok: true };
   fail("That isn't available without an account.", 404);

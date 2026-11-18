@@ -277,7 +277,9 @@ export function lessonsAndPlan(course, cards, progress, today) {
 }
 
 export function summarize(course, cards, progress, today) {
-  const { lessons, plan: p } = lessonsAndPlan(course, cards, progress, today);
+  let { lessons, plan: p } = lessonsAndPlan(course, cards, progress, today);
+  // A finished class: keeps its words (for cram, games, practice exams) but has no more daily lessons or reviews.
+  if (course.archived) p = { ...p, perDay: 0, todayLeft: 0, todayDone: 0, phase: "finished", more: null, label: "Finished · no daily lessons. Cram or test yourself anytime" };
   let learned = 0, due = 0, strong = 0, tricky = 0, retest = 0;
   const know = { mastered: 0, good: 0, getting: 0, shaky: 0 };
   for (const c of cards) {
@@ -291,8 +293,9 @@ export function summarize(course, cards, progress, today) {
     review_days: course.review_days ?? 3, finish_by: course.finish_by || null, as_you_go: course.as_you_go ? 1 : 0, keep_up_days: course.keep_up_days ?? 3,
     missed: mergeMissed(course.missed, [], []).filter((id) => cards.some((k) => k.id === id)).length,
     more_total: course.more_total ?? null, more_have: course.more_have ?? null, more_every: course.more_every || null, more_share: course.more_share ?? null, notes_done: course.notes_done ? 1 : 0,
-    total: cards.length, learned, due, retest, strong, tricky, know, lessons: lessons.length, plan: p,
-    next: (() => { const l = lessons.find((x) => !x.cards.every((c) => progress[c.id]?.learned_at)); return l ? { n: l.n, topic: l.topic, words: l.cards.length } : null; })(),
+    archived: course.archived ? 1 : 0,
+    total: cards.length, learned, due: course.archived ? 0 : due, retest: course.archived ? 0 : retest, strong, tricky, know, lessons: lessons.length, plan: p,
+    next: course.archived ? null : (() => { const l = lessons.find((x) => !x.cards.every((c) => progress[c.id]?.learned_at)); return l ? { n: l.n, topic: l.topic, words: l.cards.length } : null; })(),
   };
 }
 

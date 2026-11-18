@@ -1,6 +1,7 @@
 // Study Mania API (Cloudflare Worker + D1)
 import { sendPush } from "./webpush.js";
 import { ensureDb } from "./migrate.js";
+import { newPet, cleanPet, stageOf, petEdit, shopBuy, STARTER_POINTS } from "../public/pet.mjs";
 import { addDays, daysBetween, isDay, nextReview, summarize, mergeBest, mastery, addHist, pullDue, cleanCard, cleanQuestion, weekStart, secondReminderHour, mergeMissed } from "../public/shared.mjs";
 
 const SESSION_DAYS = 60;
@@ -79,6 +80,7 @@ const findByLogin = (env, login) => {
 // Is the streak still alive today? A missed day can be covered by a streak freeze.
 function streakState(u, day) {
   const streak = u.streak || 0;
+  if (u.paused_since) return { streak, protectedBy: 0 }; // on break: the streak waits
   if (!day || !u.last_study_day || u.last_study_day === day || u.last_study_day === addDays(day, -1)) return { streak, protectedBy: 0 };
   const missed = daysBetween(u.last_study_day, day) - 1;
   return missed <= (u.freezes || 0) ? { streak, protectedBy: missed } : { streak: 0, protectedBy: 0 };
@@ -90,8 +92,18 @@ function publicUser(u, day) {
     id: u.id, email: u.email, username: u.username || null, name: u.name, tz: u.tz, remind_hour: u.remind_hour, daily_goal: u.daily_goal,
     xp: u.xp, streak: st.streak, freezes: u.freezes || 0, freeze_needed: st.protectedBy, best_streak: u.best_streak,
     last_study_day: u.last_study_day, has_security: !!u.sec_q1, lb_hidden: !!u.lb_hidden,
+    points: u.points || 0, pet: parsePet(u.pet), paused_since: u.paused_since || null,
   };
 }
+
+// Ending a break: count it as if you studied yesterday, so the streak carries on today.
+async function endBreak(env, user, day) {
+  const y = addDays(day, -1), last = user.last_study_day && user.last_study_day > y ? user.last_study_day : y;
+  await env.DB.prepare("UPDATE users SET paused_since = NULL, last_study_day = CASE WHEN COALESCE(streak, 0) > 0 THEN ? ELSE last_study_day END WHERE id = ?").bind(last, user.id).run();
+}
+function parsePet(json) { try { return cleanPet(JSON.parse(json || "null")); } catch { return null; } }
+// Just the look of a pet, for the leaderboard (no owned list).
+function petLook(json) { const p = parsePet(json); return p ? { species: p.species, skin: p.skin, eye: p.eye, hair: p.hair, color: p.color, days: p.days, wear: p.wear, name: p.name, claimed: p.claimed } : null; }
 
 async function runBatch(env, stmts) {
   for (let i = 0; i < stmts.length; i += 50) await env.DB.batch(stmts.slice(i, i + 50));
@@ -227,7 +239,7 @@ async function api(req, env, url) {
     if (board === "week") {
       const since = weekStart(d);
       rows = (await env.DB.prepare(
-        `SELECT u.id, u.username, u.streak, SUM(x.xp) AS score FROM days x JOIN users u ON u.id = x.user_id
+        `SELECT u.id, u.username, u.streak, u.xp, u.pet, SUM(x.xp) AS score FROM days x JOIN users u ON u.id = x.user_id
          WHERE x.day >= ? AND u.username IS NOT NULL AND COALESCE(u.lb_hidden, 0) = 0
          GROUP BY u.id HAVING score > 0 ORDER BY score DESC, u.streak DESC LIMIT 10`).bind(since).all()).results;
       if (me) {
@@ -240,7 +252,7 @@ async function api(req, env, url) {
     } else {
       const alive = addDays(d, -1);
       rows = (await env.DB.prepare(
-        `SELECT id, username, streak AS score FROM users WHERE username IS NOT NULL AND COALESCE(lb_hidden, 0) = 0
+        `SELECT id, username, xp, pet, streak AS score FROM users WHERE username IS NOT NULL AND COALESCE(lb_hidden, 0) = 0
          AND streak > 0 AND last_study_day >= ? ORDER BY streak DESC, xp DESC LIMIT 10`).bind(alive).all()).results;
       if (me) {
         const s = streakState(me, d).streak;
@@ -250,7 +262,7 @@ async function api(req, env, url) {
       }
     }
     const players = (await env.DB.prepare("SELECT COUNT(*) AS n FROM users WHERE username IS NOT NULL").first()).n;
-    return json({ board, top: rows.map((r, i) => ({ rank: i + 1, username: r.username, score: r.score, me: me?.id === r.id })), me: mine, hidden: !!me?.lb_hidden, players });
+    return json({ board, top: rows.map((r, i) => ({ rank: i + 1, username: r.username, score: r.score, xp: r.xp || 0, pet: petLook(r.pet), me: me?.id === r.id })), me: mine, hidden: !!me?.lb_hidden, players });
   }
 
   if (path === "/login" && method === "POST") {
@@ -354,6 +366,7 @@ async function api(req, env, url) {
   }
 
   if (path === "/courses" && method === "POST") {
+    if (user.paused_since) await endBreak(env, user, day); // a new class ends the break
     const b = await readBody(req);
     const name = str(b.name, 80);
     if (!name) return err("Give the subject a name.");
@@ -400,6 +413,10 @@ async function api(req, env, url) {
         last_study_day = CASE WHEN COALESCE(last_study_day, '') < ? THEN ? ELSE last_study_day END WHERE id = ?`)
       .bind(Math.min(1e6, parseInt(gu.xp, 10) || 0), parseInt(gu.best_streak, 10) || 0, gStreak,
         isDay(gu.last_study_day) ? gu.last_study_day : "", gStreak, isDay(gu.last_study_day) ? gu.last_study_day : "", isDay(gu.last_study_day) ? gu.last_study_day : null, user.id).run();
+    // Bring the guest's pet and points along if the account doesn't have a pet yet.
+    const gp = cleanPet(gu.pet);
+    if (gp && !parsePet((await getUser(env, user.id)).pet))
+      await env.DB.prepare("UPDATE users SET pet = ?, points = COALESCE(points, 0) + ? WHERE id = ?").bind(JSON.stringify(gp), Math.min(1e6, Math.max(0, parseInt(gu.points, 10) || 0)), user.id).run();
     return json({ ok: true, courses: courses.length });
   }
 
@@ -423,6 +440,11 @@ async function api(req, env, url) {
       await env.DB.prepare("UPDATE courses SET name = ?, exam_date = ?, review_days = ?, finish_by = ?, as_you_go = ?, keep_up_days = ?, color = ?, more_total = ?, more_have = ?, more_every = ?, more_share = ?, notes_done = ? WHERE id = ?")
         .bind(str(b.name, 80) || course.name, p.exam_date, p.review_days, p.finish_by, p.as_you_go, p.keep_up_days,
           b.color !== undefined ? (parseInt(b.color, 10) || 0) % 8 : course.color, p.more_total, p.more_have, p.more_every, p.more_share, p.notes_done, course.id).run();
+      return json({ ok: true });
+    }
+    if (sub === "/finish" && method === "POST") {
+      const b = await readBody(req);
+      await env.DB.prepare("UPDATE courses SET archived = ? WHERE id = ?").bind(b.on ? 1 : 0, course.id).run();
       return json({ ok: true });
     }
     if (!sub && method === "DELETE") {
@@ -522,6 +544,7 @@ async function api(req, env, url) {
         .bind(crypto.randomUUID(), user.id, course.id, day, Math.max(0, parseInt(b.exam.score, 10) || 0), Math.min(500, parseInt(b.exam.total, 10))));
     }
     const xp = Math.min(800, Math.max(0, parseInt(b.xp, 10) || 0));
+    if (user.paused_since && b.counts !== false) { await endBreak(env, user, day); Object.assign(user, await getUser(env, user.id)); }
     // A round only counts toward the streak and daily goal if it was finished (or 80% done).
     const counts = b.counts !== false;
     let streak = user.streak || 0, freezes = user.freezes || 0, usedFreeze = 0, earnedFreeze = false;
@@ -529,16 +552,58 @@ async function api(req, env, url) {
       const st = streakState(user, day);
       if (st.protectedBy) { usedFreeze = st.protectedBy; freezes -= usedFreeze; streak += 1; }
       else streak = st.streak ? streak + 1 : 1;
-      if (streak % 7 === 0 && freezes < 2) { freezes += 1; earnedFreeze = true; }
     }
     const isLesson = counts && b.kind === "lesson", isReview = counts && !isLesson;
     stmts.push(env.DB.prepare(`INSERT INTO days (user_id, day, xp, rounds, lessons, reviews) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(user_id, day) DO UPDATE SET
         xp = xp + excluded.xp, rounds = rounds + excluded.rounds, lessons = lessons + excluded.lessons, reviews = reviews + excluded.reviews`)
       .bind(user.id, day, xp, counts ? 1 : 0, isLesson ? 1 : 0, isReview ? 1 : 0));
-    if (counts) stmts.push(env.DB.prepare("UPDATE users SET xp = xp + ?, streak = ?, freezes = ?, best_streak = MAX(best_streak, ?), last_study_day = ? WHERE id = ?").bind(xp, streak, freezes, streak, day, user.id));
-    else stmts.push(env.DB.prepare("UPDATE users SET xp = xp + ? WHERE id = ?").bind(xp, user.id));
+    if (counts) stmts.push(env.DB.prepare("UPDATE users SET xp = xp + ?, points = COALESCE(points, 0) + ?, streak = ?, freezes = ?, best_streak = MAX(best_streak, ?), last_study_day = ? WHERE id = ?").bind(xp, xp, streak, freezes, streak, day, user.id));
+    else stmts.push(env.DB.prepare("UPDATE users SET xp = xp + ?, points = COALESCE(points, 0) + ? WHERE id = ?").bind(xp, xp, user.id));
     await runBatch(env, stmts);
     return json({ user: publicUser(await getUser(env, user.id), day), today: await today(env, user.id, day), used_freeze: usedFreeze, earned_freeze: earnedFreeze });
+  }
+
+  // ---------- break mode: all classes done, so the streak waits until a new class ----------
+  if (path === "/break" && method === "POST") {
+    const b = await readBody(req);
+    if (b.on) await env.DB.prepare("UPDATE users SET paused_since = ? WHERE id = ?").bind(day, user.id).run();
+    else await endBreak(env, user, day);
+    return json({ user: publicUser(await getUser(env, user.id), day) });
+  }
+  // ---------- pet, shop, ranks ----------
+  if (path === "/pet/claim" && method === "POST") {
+    if (parsePet(user.pet)) return json({ user: publicUser(user, day) });
+    const pet = newPet(day);
+    await env.DB.prepare("UPDATE users SET pet = ?, points = COALESCE(points, 0) + ? WHERE id = ?").bind(JSON.stringify(pet), STARTER_POINTS, user.id).run();
+    return json({ user: publicUser(await getUser(env, user.id), day) });
+  }
+  if (path === "/pet" && method === "POST") {
+    const pet = parsePet(user.pet); if (!pet) return err("Claim your egg first.", 400);
+    const b = await readBody(req);
+    const r = petEdit(pet, b, user.xp);
+    if (r.error) return err(r.error, 400);
+    await env.DB.prepare("UPDATE users SET pet = ? WHERE id = ?").bind(JSON.stringify(pet), user.id).run();
+    return json({ user: publicUser(await getUser(env, user.id), day) });
+  }
+  if (path === "/shop/buy" && method === "POST") {
+    const b = await readBody(req), pet = parsePet(user.pet);
+    const r = shopBuy(pet, { points: user.points || 0, freezes: user.freezes || 0, xp: user.xp }, String(b.item || ""), day);
+    if (r.error) return err(r.error, 400);
+    await env.DB.prepare("UPDATE users SET points = ?, freezes = ?, pet = ? WHERE id = ?").bind(r.points, r.freezes, pet ? JSON.stringify(pet) : user.pet, user.id).run();
+    return json({ user: publicUser(await getUser(env, user.id), day) });
+  }
+  if (path === "/pet/grow" && method === "POST") {
+    const pet = parsePet(user.pet); if (!pet) return json({ user: publicUser(user, day), grew: false });
+    const before = stageOf(pet.days).id;
+    if (pet.lastGrow === day) return json({ user: publicUser(user, day), grew: false, before, after: before });
+    pet.days += 1; pet.lastGrow = day;
+    await env.DB.prepare("UPDATE users SET pet = ? WHERE id = ?").bind(JSON.stringify(pet), user.id).run();
+    return json({ user: publicUser(await getUser(env, user.id), day), grew: true, before, after: stageOf(pet.days).id });
+  }
+  if (path === "/rank-count" && method === "GET") {
+    const min = Math.max(0, parseInt(url.searchParams.get("min"), 10) || 0);
+    const n = (await env.DB.prepare("SELECT COUNT(*) AS n FROM users WHERE xp >= ?").bind(min).first()).n;
+    return json({ n });
   }
 
   if (path === "/nudge" && method === "GET") return json(await nudgeFor(env, user, day));
@@ -603,7 +668,7 @@ async function nudgeFor(env, user, day) {
 // Studied already? Only remind if a subject still has lessons planned for today, and never say the streak is ending.
 export async function sendReminders(env) {
   const { results } = await env.DB.prepare(
-    "SELECT DISTINCT u.id, u.tz, u.remind_hour, u.last_study_day, u.last_nudge_day, u.nudges_today FROM users u JOIN push_subs p ON p.user_id = u.id").all();
+    "SELECT DISTINCT u.id, u.tz, u.remind_hour, u.last_study_day, u.last_nudge_day, u.nudges_today FROM users u JOIN push_subs p ON p.user_id = u.id WHERE u.paused_since IS NULL").all();
   for (const u of results) {
     const now = localNow(u.tz || "America/New_York");
     const sentToday = u.last_nudge_day === now.day ? u.nudges_today || 0 : 0;
@@ -654,3 +719,4 @@ export default {
   },
   async scheduled(event, env, ctx) { ctx.waitUntil(ensureDb(env).then(() => sendReminders(env))); },
 };
+
