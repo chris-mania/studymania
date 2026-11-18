@@ -1053,7 +1053,7 @@ function planProblem(s) {
 }
 function planFormHTML(s) {
   const seg = (name, vals, cur, fmt = (v) => v) => `<div class="seg wrap" role="group">${vals.map((v) => `<button type="button" data-${name}="${v}" aria-pressed="${String(cur) === String(v)}">${fmt(v)}</button>`).join("")}</div>`;
-  const label = (t, sub) => `<span style="font-weight:700;font-size:15px">${t}</span>${sub ? `<span class="muted small" style="font-weight:400">${sub}</span>` : ""}`;
+  const label = (t, sub) => `<span style="font-weight:700;font-size:15px">${t}</span>${sub ? `<span class="muted small" style="display:block;font-weight:400;margin-top:2px">${sub}</span>` : ""}`;
   return `<div class="planform stack">
     <div class="field">${label("When do you need to know it?")}
       ${seg("mode", ["exam", "days", "none"], s.mode, (v) => ({ exam: "Exam date", days: "Finish in…", none: "No deadline" }[v]))}</div>
