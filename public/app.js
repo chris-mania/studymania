@@ -599,11 +599,11 @@ route(/^\/$/, () => {
         <div class="grow hero-text">
           <div class="h2-streak">${user.streak}-day streak</div>
           <p class="h2-goal ${G.done ? "done" : ""}">${user.paused_since ? "🏖️ On break · your streak is saved" : G.done ? `✓ Done for today · ${did} of ${plural(goal, G.unit)}` : `${did} of ${plural(goal, G.unit)} today`}${G.bonus ? ` <span class="pill acc">+${G.bonus} bonus</span>` : ""}</p>
-          ${!lit && !user.paused_since && plannedToday() > 0 ? `<p class="small" style="margin:2px 0 0;color:var(--flame);font-weight:700">🔥 Do a lesson to keep your streak</p>` : ""}
-        </div>
+          ${!lit && !user.paused_since && plannedToday() > 0 ? `<p class="small" style="margin:0;color:var(--flame);font-weight:700">🔥 Do a lesson to keep your streak</p>` : ""}
         <div class="h2-pills"><a class="pill rankpill" href="#/ranks" aria-label="Your rank: ${esc(rankOf(user.xp).name)}">${emblemSVG(rankOf(user.xp), 22)}<span>${esc(rankOf(user.xp).name)}</span></a><span class="pill xp-pill">⚡ ${fmt(user.xp)}</span>${user.freezes ? `<span class="pill" title="Streak freezes: each one covers a missed day">❄️ ${user.freezes}</span>` : ""}</div>
+        </div>
       </div>
-      ${courses.filter((c) => c.plan.perDay).length > 1 ? `<div class="classchips">${courses.filter((c) => c.plan.perDay).sort((a, b) => (a.id === curClass() ? -1 : b.id === curClass() ? 1 : 0)).map((c) => `<a class="cchip ${c.plan.todayLeft ? "" : "done"}" href="#/s/${c.id}/next" style="--sc:${colorVar(c.color)}"><span class="dot"></span><span class="cc-name">${esc(c.name)}</span><b>${c.plan.todayLeft ? `${c.plan.todayLeft} left` : "✓ done"}</b></a>`).join("")}</div>` : ""}
+      ${courses.filter((c) => c.plan.perDay).length > 1 ? `<div class="classchips">${courses.filter((c) => c.plan.perDay).sort((a, b) => (a.id === curClass() ? -1 : b.id === curClass() ? 1 : 0)).map((c) => `<a class="cchip ${c.plan.todayLeft ? "" : "done"}" href="#/s/${c.id}/next" style="--sc:${colorVar(c.color)}"><span class="dot"></span><span class="cc-name">${esc(c.name)}</span><b>${c.plan.todayLeft ? `${c.plan.todayLeft} left` : "✓"}</b></a>`).join("")}</div>` : ""}
       <div class="week">${days.map((d) => `<div class="dayc ${hit.has(d) ? "hit" : ""} ${d === todayStr() ? "now" : ""}"><i>${hit.has(d) ? "🔥" : ""}</i>${"SMTWTFS"[new Date(d + "T12:00").getDay()]}</div>`).join("")}</div>
       ${petSpot(G)}
     </section>
@@ -827,9 +827,9 @@ function petSpot(G) {
   const sign = exams.length ? `<div class="psign" aria-label="Upcoming exams"><div class="ps-board">${exams.map((c) => { const n = daysUntil(c.exam_date); return `<div><span>${esc(shortName(c.name))}</span><b class="${n <= 2 ? "hot" : ""}">${n === 0 ? "today!" : n === 1 ? "tmrw" : n + "d"}</b></div>`; }).join("")}</div><i class="ps-post"></i></div>` : "";
   const st = stageOf(p.days), awake = G.done || st.id === "egg";
   return `<a class="petspot" href="#/locker" aria-label="${petName(p)}. Open the locker room">
-    <div class="ps-pet">${petSVG(p, { size: 88, mood: awake ? "idle" : "sleep" })}</div>
-    <div class="ps-info"><b>${petName(p)}</b><span>${st.id === "egg" ? `Egg · hatches in ${plural(Math.max(1, 3 - p.days), "study day")}` : stageLine(p)}</span>
-      <span class="ps-mood">${G.done ? "Happy you studied ✓" : st.id === "egg" ? "Finish today's lessons to help it hatch" : "Napping until you study 💤"}</span></div>
+    <div class="ps-pet">${petSVG(p, { size: 64, mood: awake ? "idle" : "sleep" })}</div>
+    <div class="ps-info"><b>${petName(p)}</b><span>${st.id === "egg" ? `Egg · hatches in ${plural(Math.max(1, 3 - p.days), "day")}` : stageLine(p)}</span>
+      <span class="ps-mood">${G.done ? "Happy you studied ✓" : st.id === "egg" ? "Study today to help it hatch" : "Napping until you study 💤"}</span></div>
     ${sign}</a>`;
 }
 function eggCard() {

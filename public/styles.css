@@ -678,3 +678,33 @@ details summary{list-style:revert}
 /* moderator list */
 .modlist { max-height: 55vh; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
 .modrow { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; background: var(--card2, rgba(127,127,127,.08)); }
+
+/* compact home streak card */
+.hero2{gap:10px;padding:14px}
+.h2-top{gap:12px;align-items:flex-start}
+.streak-ring.mini{width:56px;height:56px}
+.streak-ring.mini .hflame{font-size:23px}
+.h2-streak{font-size:20px}
+.h2-goal{margin:0;font-size:14px}
+.hero2 .hero-text{gap:4px;flex:1}
+.h2-pills{flex-direction:row;flex-wrap:wrap;align-items:center;gap:6px;margin-top:2px}
+.h2-pills .pill{font-size:12.5px;padding:3px 9px}
+.h2-pills .rankpill{padding:2px 9px 2px 3px}
+.h2-pills .rankpill svg{width:18px;height:18px}
+.hero2 .classchips{gap:6px}
+.hero2 .cchip{font-size:13px;padding:4px 10px;gap:6px}
+.hero2 .cchip .dot{width:8px;height:8px}
+.hero2 .cchip .cc-name{max-width:130px}
+.hero2 .week{margin-top:0}
+.hero2 .dayc{gap:2px;font-size:11px}
+.hero2 .dayc i{width:24px;height:24px;font-size:12px}
+.hero2 .petspot{padding-top:10px;margin-top:0;min-height:0;gap:8px}
+.hero2 .ps-pet{width:64px;height:64px}
+.hero2 .ps-info b{font-size:16px}
+.hero2 .ps-info span{font-size:12.5px;line-height:1.3}
+.hero2 .ps-board{min-width:74px;padding:4px 7px}
+.hero2 .ps-board div{font-size:11px;gap:6px}
+.hero2 .ps-post{height:10px}
+.hero2 .classchips{display:grid;grid-template-columns:1fr 1fr}
+.hero2 .cchip{min-width:0;justify-content:space-between}
+.hero2 .cchip .cc-name{max-width:none;flex:1;min-width:0}
