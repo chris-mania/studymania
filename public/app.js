@@ -237,9 +237,8 @@ function authView(mode, { upgrade } = {}) {
     app.innerHTML = `
     ${upgrade ? `<div class="topbar"><a class="iconbtn" href="#/settings" aria-label="Back">‹</a><span></span></div>` : `
     <div class="hero welcome">
-      <button type="button" class="guest-top" id="guest">Try without an account ›</button>
       <span class="logo" role="img" aria-label="Study Mania"><img class="lg-light" src="/logo-light.png" alt=""><img class="lg-dark" src="/logo-dark.png" alt=""></span>
-      <h1 class="w-punch">Stop cramming the night before.</h1>
+      <h1 class="w-punch"><span>Stop cramming</span> <span class="w-blue">the night before.</span></h1>
       <p class="muted w-sub">Do a few tiny lessons a day from <b>your own class notes</b>, and walk into the exam ready.</p>
     </div>
     <div class="how card how-short">
@@ -263,6 +262,7 @@ function authView(mode, { upgrade } = {}) {
         ${mode === "signup" ? `<span class="muted small" style="font-weight:400">At least 8 characters.</span>` : ""}</label>
       <p class="err" id="f-err" hidden></p>
       <button class="btn primary block" id="f-go">${mode === "signup" ? (upgrade ? "Create account" : "Create account · it's free") : "Sign in"}</button>
+      ${upgrade ? "" : `<button type="button" class="guest-under" id="guest">Try without an account ›</button>`}
       ${upgrade ? "" : `<p class="muted small" style="margin:0;text-align:center">📲 Best on your phone. Add it to your home screen after. <a href="#" id="w-how" style="font-weight:700">How?</a></p>`}
       ${mode === "login" ? `<a class="btn ghost" href="#/forgot">Forgot password?</a>` : ""}
       ${SAVE_NOTE_ACCOUNT}
