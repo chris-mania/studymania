@@ -982,6 +982,19 @@ route(/^\/locker$/, () => {
   draw();
 });
 
+// ---------- moderator: who's on the app (only the moderator's account gets this button) ----------
+async function modUsers() {
+  const el = sheet(`<h2>🛡️ Everyone on Study Mania</h2><p class="muted small">Only you can see this. Usernames and join dates only.</p><div id="mod-list" class="stack" style="gap:6px"><p class="muted">Loading…</p></div><button class="btn ghost block" id="mod-close">Close</button>`);
+  el.querySelector("#mod-close").onclick = () => el.remove();
+  const box = el.querySelector("#mod-list");
+  try {
+    const r = await api("/mod/users");
+    const noName = r.users.filter((u) => !u.username).length;
+    box.innerHTML = `<p style="margin:0"><b>${r.total === 1 ? "1 account" : fmt(r.total) + " accounts"}</b>${noName ? ` <span class="muted small">(${noName} haven't picked a username yet)</span>` : ""}</p>
+      <div class="modlist">${r.users.filter((u) => u.username).map((u) => `<div class="modrow"><b>@${esc(u.username)}</b><span class="muted small">${u.joined ? "joined " + esc(u.joined) : ""}</span></div>`).join("")}</div>`;
+  } catch (e) { box.innerHTML = `<p class="err">${esc(e.message)}</p>`; }
+}
+
 // ---------- leaderboard ----------
 route(/^\/leaderboard$/, async () => {
   let board = "week";
@@ -995,9 +1008,11 @@ route(/^\/leaderboard$/, async () => {
       const r = await api(`/leaderboard?board=${board}`);
       const unit = board === "week" ? "XP" : "days";
       if (!$("lb-body")) return; // left the page while it loaded
-      $("lb-body").innerHTML = (r.top.length ? r.top.map((p) => `<div class="lbrow big ${p.me ? "me" : ""}"><span class="medal">${["🥇", "🥈", "🥉"][p.rank - 1] || `<span class="rk">${p.rank}</span>`}</span><span class="lb-pet">${p.pet ? petSVG(p.pet, { size: 40, anim: false }) : ""}</span><div class="grow lb-who"><b>@${esc(p.username)}${p.me ? " (you)" : ""}</b><span class="lb-rank">${emblemSVG(rankOf(p.xp), 18, { anim: false })}${esc(rankOf(p.xp).name)}${p.pet?.name ? ` · ${esc(p.pet.name)}` : ""}</span></div><span class="lbscore">${fmt(p.score)} ${unit}</span></div>`).join("")
+      $("lb-body").innerHTML = (r.top.length ? r.top.map((p) => `<div class="lbrow big ${p.me ? "me" : ""}"><span class="medal">${["🥇", "🥈", "🥉"][p.rank - 1] || `<span class="rk">${p.rank}</span>`}</span><span class="lb-pet">${p.pet ? petSVG(p.pet, { size: 40, anim: false }) : ""}</span><div class="grow lb-who"><b>@${esc(p.username)}${p.me ? " (you)" : ""}</b><span class="lb-rank">${emblemSVG(rankOf(p.xp), 18, { anim: false })}${esc(rankOf(p.xp).name)}</span></div><span class="lbscore">${fmt(p.score)} ${unit}</span></div>`).join("")
         : `<div class="card"><p class="muted">Nobody's on this board yet. Be the first.</p></div>`) +
-        `<p class="muted small" style="margin-top:6px">${GUEST ? `<a href="#/join">Make an account</a> to join the leaderboard.` : r.hidden ? "You're hidden. Turn it back on in Settings." : r.me?.rank ? `You're #${r.me.rank} with ${r.me.score} ${unit}.` : board === "week" ? "Earn XP this week to get ranked." : "Start a streak to get ranked."} ${board === "week" ? "Resets every Monday." : ""} ${r.players === 1 ? "1 person" : r.players + " people"} on Study Mania.</p>`;
+        `<p class="muted small" style="margin-top:6px">${GUEST ? `<a href="#/join">Make an account</a> to join the leaderboard.` : r.hidden ? "You're hidden. Turn it back on in Settings." : r.me?.rank ? `You're #${r.me.rank} with ${r.me.score} ${unit}.` : board === "week" ? "Earn XP this week to get ranked." : "Start a streak to get ranked."} ${board === "week" ? "Resets every Monday." : ""} ${r.players === 1 ? "1 person" : r.players + " people"} on Study Mania.</p>` +
+        (ME?.user?.is_mod && !GUEST ? `<button class="btn ghost block" id="lb-mod">🛡️ See everyone on the app</button>` : "");
+      if ($("lb-mod")) $("lb-mod").onclick = modUsers;
     } catch (e) { if ($("lb-body")) $("lb-body").innerHTML = `<p class="err">${esc(e.message)}</p>`; }
   };
   draw();

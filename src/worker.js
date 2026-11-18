@@ -92,7 +92,7 @@ function publicUser(u, day) {
     id: u.id, email: u.email, username: u.username || null, name: u.name, tz: u.tz, remind_hour: u.remind_hour, daily_goal: u.daily_goal,
     xp: u.xp, streak: st.streak, freezes: u.freezes || 0, freeze_needed: st.protectedBy, best_streak: u.best_streak,
     last_study_day: u.last_study_day, has_security: !!u.sec_q1, lb_hidden: !!u.lb_hidden,
-    points: u.points || 0, pet: parsePet(u.pet), paused_since: u.paused_since || null,
+    points: u.points || 0, pet: parsePet(u.pet), paused_since: u.paused_since || null, ...(u.is_mod ? { is_mod: true } : {}),
   };
 }
 
@@ -103,7 +103,12 @@ async function endBreak(env, user, day) {
 }
 function parsePet(json) { try { return cleanPet(JSON.parse(json || "null")); } catch { return null; } }
 // Just the look of a pet, for the leaderboard (no owned list).
-function petLook(json) { const p = parsePet(json); return p ? { species: p.species, skin: p.skin, eye: p.eye, hair: p.hair, color: p.color, days: p.days, wear: p.wear, name: p.name, claimed: p.claimed } : null; }
+// No pet name on the leaderboard, and an unhatched egg sends nothing about what's inside.
+function petLook(json) {
+  const p = parsePet(json); if (!p) return null;
+  if (stageOf(p.days).id === "egg") return { days: p.days, claimed: p.claimed, wear: {} };
+  return { species: p.species, skin: p.skin, eye: p.eye, hair: p.hair, color: p.color, days: p.days, wear: p.wear, claimed: p.claimed };
+}
 
 async function runBatch(env, stmts) {
   for (let i = 0; i < stmts.length; i += 50) await env.DB.batch(stmts.slice(i, i + 50));
@@ -602,6 +607,13 @@ async function api(req, env, url) {
     await env.DB.prepare("UPDATE users SET pet = ? WHERE id = ?").bind(JSON.stringify(pet), user.id).run();
     return json({ user: publicUser(await getUser(env, user.id), day), grew: true, before, after: stageOf(pet.days).id });
   }
+  // Moderator only: the list of accounts on the app. Usernames and join dates, nothing else.
+  if (path === "/mod/users" && method === "GET") {
+    if (!user.is_mod) return json({ error: "Not found." }, 404);
+    const rows = (await env.DB.prepare("SELECT username, substr(created_at, 1, 10) AS joined FROM users ORDER BY created_at DESC LIMIT 2000").all()).results;
+    return json({ total: rows.length, users: rows.map((r) => ({ username: r.username || null, joined: r.joined || null })) });
+  }
+
   if (path === "/rank-count" && method === "GET") {
     const min = Math.max(0, parseInt(url.searchParams.get("min"), 10) || 0);
     const n = (await env.DB.prepare("SELECT COUNT(*) AS n FROM users WHERE xp >= ?").bind(min).first()).n;
