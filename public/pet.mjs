@@ -63,7 +63,7 @@ export const STARTER_POINTS = 1000;
 // Paced so the top rank takes about a school year of steady studying (~400 XP on a normal day,
 // with summer and winter breaks off). Each tier is a bigger climb than the last.
 export const TIERS = [
-  ["Wood", "#b5824f", 0], ["Bronze", "#d08a4a", 2000], ["Silver", "#c3cbd6", 6000], ["Gold", "#f2c94c", 13000],
+  ["Wood", "#8a5a34", 0], ["Bronze", "#d08a4a", 2000], ["Silver", "#c3cbd6", 6000], ["Gold", "#f2c94c", 13000],
   ["Platinum", "#8fe0db", 21000], ["Emerald", "#2fcf7a", 30000], ["Sapphire", "#4a8bf0", 40000], ["Amethyst", "#a56be0", 51000],
   ["Diamond", "#b9f2ff", 63000], ["Ruby", "#ff3d7f", 76000], ["Obsidian", "#6d6a8a", 90000], ["Champion", "#ff9f1a", 105000],
 ];
@@ -312,23 +312,41 @@ export function petSVG(p, opts = {}) {
 }
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
-// Rank emblem: a shiny gem in the tier's color. Higher tiers get more facets, a glow and sparkles.
+// Rank emblem: a metal medal. Beveled octagon rim, shiny face, a faceted star.
+// Higher tiers add wings (Gold+), longer wings (Emerald+), top/bottom spikes (Sapphire+), gems (Diamond+) and a glow.
+const oct = (cx, cy, r) => Array.from({ length: 8 }, (_, i) => { const a = (Math.PI / 4) * i + Math.PI / 8; return `${(cx + r * Math.cos(a)).toFixed(1)},${(cy + r * Math.sin(a)).toFixed(1)}`; }).join(" ");
+function starFacets(cx, cy, n, ro, ri, light, dark) {
+  let out = "";
+  for (let i = 0; i < n; i++) {
+    const a = -Math.PI / 2 + (2 * Math.PI / n) * i, a1 = a - Math.PI / n, a2 = a + Math.PI / n;
+    const P = (ang, r) => `${(cx + r * Math.cos(ang)).toFixed(1)} ${(cy + r * Math.sin(ang)).toFixed(1)}`;
+    out += `<path d="M${cx} ${cy} L${P(a1, ri)} L${P(a, ro)} Z" fill="${light}"/><path d="M${cx} ${cy} L${P(a, ro)} L${P(a2, ri)} Z" fill="${dark}"/>`;
+  }
+  return out;
+}
 export function emblemSVG(r, size = 28, { anim = true } = {}) {
-  const id = ++uid, c = r.color, dk = shade(c, 0.62), lt = shade(c, 1.3);
-  const t = r.tier, top = t >= 12;
-  const shape = t < 3 ? "M50 6 L88 28 L88 72 L50 94 L12 72 L12 28 Z"
-    : t < 6 ? "M50 4 L92 34 L76 92 L24 92 L8 34 Z"
-    : t < 9 ? "M50 2 L90 30 L90 70 L50 98 L10 70 L10 30 Z"
-    : "M50 2 L64 30 L96 36 L72 60 L78 94 L50 78 L22 94 L28 60 L4 36 L36 30 Z";
-  const pips = r.level ? Array.from({ length: r.level }, (_, i) => ((x) => `<path d="M${x} 72 L${x + 5} 78 L${x} 84 L${x - 5} 78 Z" fill="#fff" stroke="${dk}" stroke-width="1.5"/>`)(50 + (i - (r.level - 1) / 2) * 14)).join("") : "";
-  const flame = top ? `<path d="M50 20 C40 36 34 44 34 56 A16 16 0 0 0 66 56 C66 44 58 40 56 30 C52 38 48 40 50 20 Z" fill="#fff" opacity=".9"/>` : "";
+  const id = ++uid, t = r.tier, top = t >= 12, c = r.color;
+  const hi = shade(c, 1.55), lt = shade(c, 1.25), dk = shade(c, 0.6), deep = shade(c, 0.38);
+  const metal = (gid) => `<linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${hi}"/><stop offset=".45" stop-color="${c}"/><stop offset=".55" stop-color="${dk}"/><stop offset="1" stop-color="${lt}"/></linearGradient>`;
+  const wingL = t >= 3 ? (t >= 5 ? `<path d="M30 36 L3 28 L7 40 L30 44 Z"/><path d="M30 46 L1 44 L6 56 L30 55 Z"/><path d="M31 56 L7 61 L13 70 L33 63 Z"/>` : `<path d="M30 38 L7 32 L11 43 L30 46 Z"/><path d="M30 49 L9 48 L13 58 L31 57 Z"/>`) : "";
+  const wings = wingL ? `<g fill="url(#m${id})" stroke="${deep}" stroke-width="1.2" stroke-linejoin="round">${wingL}<g transform="translate(100 0) scale(-1 1)">${wingL}</g></g>` : "";
+  const spikes = t >= 6 ? `<path d="M50 0 L56 20 L50 17 L44 20 Z M50 100 L56 80 L50 83 L44 80 Z" fill="url(#m${id})" stroke="${deep}" stroke-width="1.2" stroke-linejoin="round"/>` : "";
+  const gems = t >= 8 ? [[50, 20], [50, 80], [21, 50], [79, 50]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="3.2" fill="${top ? "#ff3d3d" : "#fff"}" stroke="${deep}" stroke-width="1"/><circle cx="${x - 1}" cy="${y - 1}" r="1" fill="#fff"/>`).join("") : "";
+  const points = t < 1 ? 4 : t < 3 ? 5 : 8;
+  const center = top
+    ? `<path d="M50 30 C42 42 37 48 37 57 A13 13 0 0 0 63 57 C63 48 57 45 55 37 C52 44 49 45 50 30 Z" fill="#fff4d6" stroke="${deep}" stroke-width="1.2"/><path d="M50 46 C46 52 44 55 44 59 A6 6 0 0 0 56 59 C56 55 53 52 50 46 Z" fill="#ffb02e"/>`
+    : starFacets(50, 50, points, 19, 7.5, hi, dk) + `<circle cx="50" cy="50" r="3" fill="${hi}"/>`;
+  const pips = r.level ? Array.from({ length: r.level }, (_, i) => ((x) => `<path d="M${x} 71 L${x + 3.5} 75 L${x} 79 L${x - 3.5} 75 Z" fill="${hi}" stroke="${deep}" stroke-width="1"/>`)(50 + (i - (r.level - 1) / 2) * 9)).join("") : "";
   return `<svg class="emblem ${anim ? "" : "still"}" viewBox="0 0 100 100" width="${size}" height="${size}" role="img" aria-label="${esc(r.name)} rank">
-    <defs><linearGradient id="e${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${lt}"/><stop offset="1" stop-color="${dk}"/></linearGradient><clipPath id="c${id}"><path d="${shape}"/></clipPath></defs>
-    ${t >= 6 ? `<path d="${shape}" fill="${c}" opacity=".35" transform="translate(50 50) scale(1.14) translate(-50 -50)" class="em-glow"/>` : ""}
-    <path d="${shape}" fill="url(#e${id})" stroke="${dk}" stroke-width="4" stroke-linejoin="round"/>
-    <path d="M50 14 L76 32 L50 46 L24 32 Z" fill="#fff" opacity=".28"/>
-    ${flame}${pips}
-    <g clip-path="url(#c${id})"><rect class="em-shine" x="-60" y="-10" width="22" height="130" fill="#fff" opacity=".55" transform="rotate(20)"/></g>
-    ${t >= 9 ? `<path class="p-spark" d="M88 6 L90 12 L96 14 L90 16 L88 22 L86 16 L80 14 L86 12 Z" fill="#fff"/>` : ""}
+    <defs>${metal("m" + id)}<radialGradient id="f${id}" cx=".4" cy=".35" r=".75"><stop offset="0" stop-color="${hi}"/><stop offset=".6" stop-color="${c}"/><stop offset="1" stop-color="${dk}"/></radialGradient>
+      <clipPath id="c${id}"><polygon points="${oct(50, 50, 32)}"/></clipPath></defs>
+    ${t >= 6 ? `<circle cx="50" cy="50" r="44" fill="${c}" opacity=".25" class="em-glow"/>` : ""}
+    ${spikes}${wings}
+    <polygon points="${oct(50, 50, 32)}" fill="url(#m${id})" stroke="${deep}" stroke-width="1.5" stroke-linejoin="round"/>
+    <polygon points="${oct(50, 50, 26)}" fill="url(#f${id})" stroke="${deep}" stroke-width="1.2" stroke-linejoin="round"/>
+    <polygon points="${oct(50, 50, 24)}" fill="none" stroke="${hi}" stroke-width=".8" opacity=".7"/>
+    ${center}${pips}${gems}
+    <g clip-path="url(#c${id})"><rect class="em-shine" x="-60" y="-10" width="18" height="130" fill="#fff" opacity=".45" transform="rotate(20)"/></g>
+    ${t >= 9 ? `<path class="p-spark" d="M86 8 L88 14 L94 16 L88 18 L86 24 L84 18 L78 16 L84 14 Z" fill="#fff"/>` : ""}
   </svg>`;
 }
