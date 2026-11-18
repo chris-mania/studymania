@@ -236,16 +236,16 @@ function authView(mode, { upgrade } = {}) {
   const draw = () => {
     app.innerHTML = `
     ${upgrade ? `<div class="topbar"><a class="iconbtn" href="#/settings" aria-label="Back">‹</a><span></span></div>` : `
-    <div class="hero">
+    <div class="hero welcome">
       <button type="button" class="guest-top" id="guest">Try without an account ›</button>
       <span class="logo" role="img" aria-label="Study Mania"><img class="lg-light" src="/logo-light.png" alt=""><img class="lg-dark" src="/logo-dark.png" alt=""></span>
-      <p class="muted">Turn your class notes or slides into bite-size lessons. Do one or two a day, and walk into the exam already knowing it.</p>
-      <p class="notice small" style="margin:0">📲 <b style="display:inline">Best on your phone.</b> After you sign up, add Study Mania to your home screen and turn on reminders. <a href="#" id="w-how" style="font-weight:700">How?</a></p>
+      <h1 class="w-punch">Stop cramming the night before.</h1>
+      <p class="muted w-sub">Do a few tiny lessons a day from <b>your own class notes</b>, and walk into the exam ready.</p>
     </div>
-    <div class="how card">
-      <div><i>1</i><p>Copy our prompt and give it your notes or slides in any AI: ChatGPT, Claude, Gemini, Grok.</p></div>
-      <div><i>2</i><p>Paste the AI's reply back here. It becomes lessons, quizzes and practice exams.</p></div>
-      <div><i>3</i><p>Do a little each day, keep your streak, and ace the exam.</p></div>
+    <div class="how card how-short">
+      <div><i>1</i><p><b>Add your notes once</b> <span class="muted">· about 5 min</span></p></div>
+      <div><i>2</i><p><b>Do 1 or 2 quick lessons a day</b></p></div>
+      <div><i>3</i><p><b>Keep your streak, ace the exam</b></p></div>
     </div>`}
     <form class="stack" id="auth" style="margin-top:18px" novalidate>
       ${upgrade ? `<h1>Save your progress</h1><p class="muted">Create an account and everything you've done on this device moves into it.</p>` : `
@@ -262,7 +262,8 @@ function authView(mode, { upgrade } = {}) {
       <label class="field">Password<input id="f-pass" type="password" autocomplete="${mode === "signup" ? "new-password" : "current-password"}" minlength="8" required>
         ${mode === "signup" ? `<span class="muted small" style="font-weight:400">At least 8 characters.</span>` : ""}</label>
       <p class="err" id="f-err" hidden></p>
-      <button class="btn primary block" id="f-go">${mode === "signup" ? "Create account" : "Sign in"}</button>
+      <button class="btn primary block" id="f-go">${mode === "signup" ? (upgrade ? "Create account" : "Create account · it's free") : "Sign in"}</button>
+      ${upgrade ? "" : `<p class="muted small" style="margin:0;text-align:center">📲 Best on your phone. Add it to your home screen after. <a href="#" id="w-how" style="font-weight:700">How?</a></p>`}
       ${mode === "login" ? `<a class="btn ghost" href="#/forgot">Forgot password?</a>` : ""}
       ${SAVE_NOTE_ACCOUNT}
     </form>
@@ -1217,24 +1218,31 @@ route(/^\/add(?:\/([\w-]+))?(\/cram)?$/, (addTo, cramFlag) => {
       <button class="btn ghost" id="a-sample">Or try a sample subject first</button>`;
     if (S.step === 2) body = `
       ${cram ? classTag(existing) : ""}
-      <h1>${cram ? "Add last-minute notes" : existing ? `Add notes or slides to ${esc(existing.name)}` : "Turn your notes or slides into lessons"}</h1>
+      <div class="addhead">
+        <h1>${cram ? "Add last-minute notes" : existing ? `Add notes to ${esc(existing.name)}` : "3 easy steps, then you're set"}</h1>
+        ${cram ? "" : `<div class="addchips"><span>5 min total</span><span>${existing ? "Adds to this class" : "Once per class"}</span><span class="good">Saved forever</span></div>`}
+      </div>
       ${cram ? `<p class="muted">Exam soon? This version tells the AI to keep only what's likely on the test and combine small terms. Then you cram the new words right away: card first, then a quick quiz.</p>` : ""}
       <div class="field"><span style="font-weight:700;font-size:15px">What's the test like?</span>
         <div class="seg wrap">${TESTS.map(([v, t]) => `<button type="button" data-test="${v}" aria-pressed="${S.test === v}">${t}</button>`).join("")}</div>
         <span class="muted small">The AI focuses on what that kind of test asks.</span></div>
-      <div class="card stack">
-        <p><b>1.</b> Copy the Study Mania prompt.</p>
-        <button class="btn primary block" id="a-copy">Copy prompt</button>
-        <p><b>2.</b> Open any AI and paste the prompt. Then, right after it, <b>paste your notes</b> or <b>attach your slides</b> (PowerPoint or PDF), and send.</p>
-        <div class="ais">
-          <a class="btn sm" href="https://chatgpt.com/" target="_blank" rel="noopener">ChatGPT</a>
-          <a class="btn sm" href="https://claude.ai/new" target="_blank" rel="noopener">Claude</a>
-          <a class="btn sm" href="https://gemini.google.com/app" target="_blank" rel="noopener">Gemini</a>
-          <a class="btn sm" href="https://grok.com/" target="_blank" rel="noopener">Grok</a>
-        </div>
-        <p class="muted small">Slides won't upload? Save them as a PDF first (in PowerPoint: File → Save As → PDF). The AI is told to send everything in one reply. If it ever splits it into parts, say NEXT and paste all the parts together in the next step. Only have this week's chapters? That's fine. Add the next ones whenever you get them.</p>
-      </div>
-      <button class="btn block" id="a-next">I have the reply</button>
+      <ol class="steps3">
+        <li><i>1</i><div><div class="s3h"><b>Copy our instructions</b><span>5 sec</span></div>
+          <span class="muted small">We already wrote what the AI needs to make your lessons.</span>
+          <button class="btn primary block" id="a-copy">Copy</button></div></li>
+        <li><i>2</i><div><div class="s3h"><b>Paste it into any AI</b><span>2 min</span></div>
+          <span class="muted small">Paste, then add your notes or attach your slides (PDF or PowerPoint), and hit send.</span>
+          <div class="ais four">
+            <a class="btn sm" href="https://chatgpt.com/" target="_blank" rel="noopener">ChatGPT</a>
+            <a class="btn sm" href="https://claude.ai/new" target="_blank" rel="noopener">Claude</a>
+            <a class="btn sm" href="https://gemini.google.com/app" target="_blank" rel="noopener">Gemini</a>
+            <a class="btn sm" href="https://grok.com/" target="_blank" rel="noopener">Grok</a>
+          </div></div></li>
+        <li><i>3</i><div><div class="s3h"><b>Paste the reply back here</b><span>1 min</span></div>
+          <span class="muted small">We turn it into lessons, quizzes and practice exams. Done.</span>
+          <button class="btn block" id="a-next">I have the reply →</button></div></li>
+      </ol>
+      <p class="muted small">Slides won't upload? Save them as a PDF first (in PowerPoint: File → Save As → PDF). AI split its reply into parts? Say NEXT, then paste all the parts together. Only have some chapters? Add the rest anytime.</p>
       ${existing ? "" : `<button class="btn ghost" id="a-back">Back</button>`}`;
     if (S.step === 3) body = `
       <h1>Paste the AI's reply</h1>
@@ -1274,7 +1282,7 @@ route(/^\/add(?:\/([\w-]+))?(\/cram)?$/, (addTo, cramFlag) => {
     if (S.step === 2) {
       $("a-copy").onclick = async () => {
         const text = window.buildPrompt({ test: S.test, cram });
-        try { await navigator.clipboard.writeText(text); toast("Prompt copied. Now paste it into your AI."); $("a-copy").textContent = "Copied ✓"; }
+        try { await navigator.clipboard.writeText(text); toast("Copied. Now paste it into your AI."); $("a-copy").textContent = "Copied ✓"; }
         catch { promptSheet(text); }
       };
       app.querySelectorAll("[data-test]").forEach((b) => (b.onclick = () => { S.test = b.dataset.test; store.set(testKey, S.test); draw(); }));
