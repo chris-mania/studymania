@@ -620,7 +620,8 @@ route(/^\/$/, () => {
         ${nx.k === "next" ? `<p class="muted small">Lessons you do now come off your plan, so tomorrow gets lighter.</p>` : ""}
       </section>`
       : nx ? `<a class="upnext ${nx.k === "review" ? "is-review" : ""}" href="#${nextHref(nx)}" style="--sc:${nx.k === "review" ? "var(--rev)" : colorVar(nx.c.color)}">
-        <span class="kicker">${nx.k === "review" ? "🔁 Review" : "Up next"} · ${esc(nx.c.name)}</span>
+        <span class="kicker">${nx.k === "review" ? "🔁 Review" : nx.k === "next" && nx.c.plan.todayLeft > 0 ? "📅 Daily lesson" : "Up next"} · ${esc(nx.c.name)}</span>
+        ${nx.k === "next" && nx.c.plan.todayLeft > 0 && G.goal ? `<span class="un-daily">${Math.min(G.goal, G.did + 1)} of ${G.goal} today · keeps your streak</span>` : ""}
         <span class="un-title">${esc(nx.title)}</span>
         <span class="un-sub">${esc(nx.sub)}</span>
         <span class="btn primary block un-btn">${nx.k === "review" ? "Start review" : did ? "Keep going" : "Start"}</span>
@@ -700,14 +701,17 @@ const waitClose = (el) => new Promise((res) => {
   b.onclick = () => { el.classList.remove("show"); setTimeout(() => el.remove(), 260); res(); };
 });
 
-async function rankOverlay(r, { first = false } = {}) {
+async function rankOverlay(r, { first = false, newTier = false } = {}) {
+  const p = myPet(), jk = `j-${r.tier}`, showJacket = newTier && p && stageOf(p.days).id !== "egg";
   let count = null;
   if (!GUEST) try { count = (await api(`/rank-count?min=${r.tier >= 12 ? TOP_XP : TIERS[r.tier][2]}`)).n; } catch {}
   const el = overlay(`<div class="rk-stage"><div class="rk-rays"></div><div class="rk-em">${emblemSVG(r, 156)}</div></div>
     <div class="kicker">${first ? "Your rank" : "New rank!"}</div><h1 class="ov-h">${esc(r.name)}</h1>
     <p class="muted">${count ? `${fmt(count)} ${count === 1 ? "person has" : "people have"} reached ${esc(r.tierName)}${r.tier < 12 ? " or higher" : ""}. ` : ""}${first ? "Your rank comes from all the XP you've ever earned, and it never goes down." : ""}</p>
     ${r.next ? `<p class="small muted">${fmt(r.next - (ME.user.xp || 0))} XP to the next rank.</p>` : ""}
+    ${showJacket ? `<div class="jk-reveal"><div>${petSVG({ ...p, wear: { ...p.wear, top: jk } }, { size: 96, mood: "happy" })}</div><div style="text-align:left"><b>🎁 Secret unlocked: ${esc(item(jk).name)}</b><span class="muted small" style="display:block">Wear it from the locker room.</span><button class="btn sm" id="jk-wear" style="margin-top:6px">Wear it now</button></div></div>` : ""}
     <button class="btn primary block ov-ok">${first ? "Let's go" : "Nice"}</button>`, "rank");
+  if (showJacket) el.querySelector("#jk-wear").onclick = async (e) => { try { await petPost("/pet", { wear: { top: jk } }); e.target.textContent = "Wearing it ✓"; e.target.disabled = true; } catch (er) { toast(er.message); } };
   store.set("sm-rank-seen", r.idx);
   await sleepMs(500); chime("win"); confetti(first ? 0.9 : 1.5); buzz([20, 60, 20]);
   await waitClose(el);
@@ -905,7 +909,13 @@ route(/^\/shop$/, () => {
       <p class="muted small">Points come from every lesson, review, practice exam and game (same as the XP you earn). Spending points never lowers your rank.</p>
       ${section("❄️ Streak freeze", visible.filter((it) => it.slot === "freeze"), `Saves your streak if you miss a day. Hold up to ${FREEZE_MAX}.`)}
       ${section(new Date(T + "T12:00").getMonth() === 10 ? "🦃 Thanksgiving" : "🎄 Holiday", holiday, "Only in the shop this month. Yours to keep forever.")}
-      ${section("✨ Rank jackets", jackets, "Free when you reach the rank. Shiny.")}
+      ${(() => {
+        // Rank jackets stay a mystery: only the ones you've earned show, plus one "???" for the next.
+        const hatched = p && stageOf(p.days).id !== "egg", tierNow = rankOf(ME.user.xp || 0).tier;
+        const got = hatched ? jackets.filter((it) => it.rank <= tierNow) : [], next = jackets.find((it) => it.rank > tierNow);
+        const mystery = `<div class="itile mystery"><div class="bigicon sm">❓</div><b>${!p ? "Claim your egg" : !hatched ? "Hatch your egg" : `Reach ${esc(next ? (next.rank >= 12 ? "Study Maniac" : TIERS[next.rank][0]) : "")}`}</b><span class="itag lock">🔒 Mystery jacket</span></div>`;
+        return `<h3 class="shop-h">✨ Rank jackets</h3><p class="muted small" style="margin:-4px 0 6px">A secret shiny jacket for every rank. Each one only shows up once you reach it.</p><div class="igrid">${got.map(tile).join("")}${next || !hatched ? mystery : ""}</div>`;
+      })()}
       ${SHOP_SECTIONS.map(([slot, title]) => section(title, visible.filter((it) => it.slot === slot && it.rank == null && !it.season))).join("")}
     </div>`;
     app.querySelectorAll("[data-it]").forEach((b) => (b.onclick = () => itemSheet(item(b.dataset.it), draw)));
@@ -967,10 +977,11 @@ route(/^\/leaderboard$/, async () => {
     try {
       const r = await api(`/leaderboard?board=${board}`);
       const unit = board === "week" ? "XP" : "days";
+      if (!$("lb-body")) return; // left the page while it loaded
       $("lb-body").innerHTML = (r.top.length ? r.top.map((p) => `<div class="lbrow big ${p.me ? "me" : ""}"><span class="medal">${["🥇", "🥈", "🥉"][p.rank - 1] || `<span class="rk">${p.rank}</span>`}</span><span class="lb-pet">${p.pet ? petSVG(p.pet, { size: 40, anim: false }) : ""}</span><div class="grow lb-who"><b>@${esc(p.username)}${p.me ? " (you)" : ""}</b><span class="lb-rank">${emblemSVG(rankOf(p.xp), 18, { anim: false })}${esc(rankOf(p.xp).name)}${p.pet?.name ? ` · ${esc(p.pet.name)}` : ""}</span></div><span class="lbscore">${fmt(p.score)} ${unit}</span></div>`).join("")
         : `<div class="card"><p class="muted">Nobody's on this board yet. Be the first.</p></div>`) +
         `<p class="muted small" style="margin-top:6px">${GUEST ? `<a href="#/join">Make an account</a> to join the leaderboard.` : r.hidden ? "You're hidden. Turn it back on in Settings." : r.me?.rank ? `You're #${r.me.rank} with ${r.me.score} ${unit}.` : board === "week" ? "Earn XP this week to get ranked." : "Start a streak to get ranked."} ${board === "week" ? "Resets every Monday." : ""} ${r.players === 1 ? "1 person" : r.players + " people"} on Study Mania.</p>`;
-    } catch (e) { $("lb-body").innerHTML = `<p class="err">${esc(e.message)}</p>`; }
+    } catch (e) { if ($("lb-body")) $("lb-body").innerHTML = `<p class="err">${esc(e.message)}</p>`; }
   };
   draw();
 });
@@ -1856,7 +1867,7 @@ async function saveRound(body) {
   }
   try { await loadMe(); } catch {}
   const r0 = rankOf(xp0), r1 = rankOf(ME.user.xp);
-  if (r1.idx > r0.idx) queueOverlay(() => sleepMs(1400).then(() => rankOverlay(r1)));
+  if (r1.idx > r0.idx) queueOverlay(() => sleepMs(1400).then(() => rankOverlay(r1, { newTier: r1.tier > r0.tier })));
   return { ...before, used_freeze: saved?.used_freeze || 0, earned_freeze: !!saved?.earned_freeze };
 }
 function celebrate(before, { xp, accuracy, best, text, title, after }) {

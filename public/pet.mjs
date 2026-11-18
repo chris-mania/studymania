@@ -38,9 +38,9 @@ export const ITEMS = [
   ["hoodie", "top", "Hoodie", 1000], ["jean", "top", "Jean jacket", 1200], ["sweater", "top", "Heart sweater", 800], ["shirttie", "top", "Shirt & tie", 1000],
   ["dress", "top", "Dress", 1000], ["overalls", "top", "Overalls", 800], ["varsity", "top", "Varsity jacket", 1500], ["puffer", "top", "Puffer", 1200],
   ["labcoat", "top", "Lab coat", 1000], ["tux", "top", "Tux", 5000], ["raincoat", "top", "Raincoat", 800], ["flannel", "top", "Flannel", 800],
-  // rank jackets (free when you reach the rank)
-  ["j-gold", "top", "Gold jacket", 0, { rank: 3 }], ["j-emerald", "top", "Emerald jacket", 0, { rank: 5 }], ["j-diamond", "top", "Diamond jacket", 0, { rank: 8 }],
-  ["j-ruby", "top", "Ruby jacket", 0, { rank: 9 }], ["j-champ", "top", "Champion jacket", 0, { rank: 11 }],
+  // rank jackets: one per rank tier, free (and only shown) once you reach it
+  ...["Wood", "Bronze", "Silver", "Gold", "Platinum", "Emerald", "Sapphire", "Amethyst", "Diamond", "Ruby", "Obsidian", "Champion", "Study Maniac"]
+    .map((n, t) => ["j-" + t, "top", n + " jacket", 0, { rank: t }]),
   // holidays
   ["turkey", "top", "Turkey sweater", 800, { season: [11, 11] }], ["pilgrim", "hat", "Pilgrim hat", 800, { season: [11, 11] }],
   ["ugly", "top", "Ugly holiday sweater", 800, { season: [12, 12] }], ["santa", "hat", "Santa hat", 800, { season: [12, 12] }], ["antlers", "hat", "Reindeer antlers", 600, { season: [12, 12] }],
@@ -94,7 +94,7 @@ export function newPet(day, r = Math.random) {
 // What a user has unlocked without buying: rank jackets, the elder wizard hat, and what they were born with.
 export function owns(pet, xp, id) {
   const it = item(id); if (!it || !pet) return false;
-  if (it.rank != null) return rankOf(xp).tier >= it.rank;
+  if (it.rank != null) return rankOf(xp).tier >= it.rank; // tier 12 = Study Maniac
   if (it.elder) return stageOf(pet.days).id === "elder";
   return (pet.owned || []).includes(id);
 }
@@ -207,7 +207,25 @@ function hairParts(id, c, sp) {
 function topSVG(id, gid) {
   const S = (fill) => `<path d="M25 88 Q60 96 95 88 C92 102 78 110 60 110 C42 110 28 102 25 88 Z" fill="${fill}"/>`;
   const shine = (c1, c2) => `<defs><linearGradient id="g${gid}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${c1}"/><stop offset=".5" stop-color="#fff"/><stop offset="1" stop-color="${c2}"/></linearGradient></defs>`;
-  const jacket = (c1, c2) => `${shine(c1, c2)}<clipPath id="cj${gid}"><path d="M25 88 Q60 96 95 88 C92 102 78 110 60 110 C42 110 28 102 25 88 Z"/></clipPath>${S(`url(#g${gid})`)}<path d="M52 92 L68 92 L66 110 L54 110 Z" fill="${shade(c2, 0.7)}"/><path d="M44 88 L52 92 L50 100 Z M76 88 L68 92 L70 100 Z" fill="${c2}"/><g clip-path="url(#cj${gid})"><path class="p-sheen" d="M30 86 L40 86 L30 112 L20 112 Z" fill="#fff" opacity=".55"/></g>`;
+  // Rank jackets: shiny metal bomber. Open V front over a dark shirt, popped collar, sleeves, gold zipper, star patch, light sweep + twinkles.
+  const jacket = (base) => {
+    const c1 = shade(base, 1.12), c2 = shade(base, 0.72), hi = shade(base, 1.5), dk = shade(base, 0.5);
+    const L = "M22 84 L46 83 L56 100 L56 113 L44 113 C32 110 23 102 22 84 Z", R = "M98 84 L74 83 L64 100 L64 113 L76 113 C88 110 97 102 98 84 Z";
+    return `<defs><linearGradient id="g${gid}" x1="0" y1="0" x2=".45" y2="1"><stop offset="0" stop-color="${hi}"/><stop offset=".25" stop-color="${c1}"/><stop offset=".4" stop-color="#fff"/><stop offset=".52" stop-color="${c1}"/><stop offset=".78" stop-color="${c2}"/><stop offset="1" stop-color="${dk}"/></linearGradient>
+      <linearGradient id="s${gid}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${hi}"/><stop offset=".5" stop-color="${c1}"/><stop offset="1" stop-color="${dk}"/></linearGradient>
+      <clipPath id="cj${gid}"><path d="${L} ${R}"/></clipPath></defs>
+      <path d="M44 86 L76 86 L64 113 L56 113 Z" fill="#23252e"/>
+      <path d="M22 86 Q14 96 13 108 Q18 112 24 108 Q25 98 30 92 Z" fill="url(#s${gid})" stroke="${dk}" stroke-width="1.3" stroke-linejoin="round"/>
+      <path d="M98 86 Q106 96 107 108 Q102 112 96 108 Q95 98 90 92 Z" fill="url(#s${gid})" stroke="${dk}" stroke-width="1.3" stroke-linejoin="round"/>
+      <path d="${L}" fill="url(#g${gid})" stroke="${dk}" stroke-width="1.3" stroke-linejoin="round"/><path d="${R}" fill="url(#g${gid})" stroke="${dk}" stroke-width="1.3" stroke-linejoin="round"/>
+      <path d="M46 83 L39 79 L52 93 Z M74 83 L81 79 L68 93 Z" fill="${hi}" stroke="${dk}" stroke-width="1.1" stroke-linejoin="round"/>
+      <path d="M24 108 Q34 112 44 112 M96 108 Q86 112 76 112" fill="none" stroke="${dk}" stroke-width="2.5" stroke-linecap="round"/>
+      <path d="M56 100 L56 113 M64 100 L64 113" stroke="#f6e7a8" stroke-width="1.6"/>
+      <path d="M36 92 L37.6 95.6 L41.5 96 L38.6 98.6 L39.4 102.4 L36 100.4 L32.6 102.4 L33.4 98.6 L30.5 96 L34.4 95.6 Z" fill="#fff" stroke="${dk}" stroke-width="1"/>
+      <g clip-path="url(#cj${gid})"><path class="p-sheen" d="M26 80 L38 80 L26 116 L14 116 Z" fill="#fff" opacity=".75"/></g>
+      <path class="p-spark" d="M90 84 L91.4 88 L95.4 89.4 L91.4 90.8 L90 94.8 L88.6 90.8 L84.6 89.4 L88.6 88 Z" fill="#fff"/><path class="p-spark" style="animation-delay:.5s" d="M28 104 L29 107 L32 108 L29 109 L28 112 L27 109 L24 108 L27 107 Z" fill="#fff"/>`;
+  };
+  if (/^j-\d+$/.test(id)) { const t = +id.slice(2); return jacket(t >= 12 ? "#ff6a3d" : TIERS[t][1]); }
   switch (id) {
     case "tee": return S("#4b98f7") + `<path d="M50 92 Q60 98 70 92" fill="none" stroke="#3a7fd6" stroke-width="2.5"/>`;
     case "stripes": return S("#fff") + `<path d="M27 96 Q60 103 93 96 M33 104 Q60 110 87 104" fill="none" stroke="#2c3e75" stroke-width="4"/>`;
@@ -227,11 +245,6 @@ function topSVG(id, gid) {
     case "flannel": return S("#c0392b") + `<path d="M38 92 L38 106 M50 94 L50 110 M70 94 L70 110 M82 92 L82 106 M28 98 Q60 106 92 98 M34 105 Q60 112 86 105" fill="none" stroke="#7a1f16" stroke-width="2.5"/>`;
     case "turkey": return S("#a0522d") + `<g transform="translate(60 102)"><path d="M-9 0 Q-12 -10 -4 -10 M9 0 Q12 -10 4 -10 M0 -2 Q0 -14 0 -12" stroke="#e2543e" stroke-width="4" stroke-linecap="round" fill="none"/><circle r="5" fill="#6b3a1f"/><circle cx="1.5" cy="-1" r="1" fill="#fff"/></g>`;
     case "ugly": return S("#2e8b57") + `<path d="M27 92 L35 98 L43 92 L51 98 L59 92 L67 98 L75 92 L83 98 L93 92" fill="none" stroke="#fff" stroke-width="2.5"/><circle cx="40" cy="104" r="2.5" fill="#e2543e"/><circle cx="60" cy="106" r="2.5" fill="#f2c94c"/><circle cx="80" cy="104" r="2.5" fill="#e2543e"/>`;
-    case "j-gold": return jacket("#f6d365", "#c99a1c");
-    case "j-emerald": return jacket("#5ef0a0", "#14995a");
-    case "j-diamond": return jacket("#e6fbff", "#7fc8e0");
-    case "j-ruby": return jacket("#ff7aa8", "#b0124f");
-    case "j-champ": return jacket("#ffcf6b", "#e0701a");
     default: return "";
   }
 }

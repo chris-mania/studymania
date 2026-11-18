@@ -663,3 +663,7 @@ details summary{list-style:revert}
 .breakcard{display:flex;flex-direction:column;align-items:flex-start;gap:6px}
 .ctile.finished{opacity:.7}
 #c-done .btn{display:flex;flex-direction:column;align-items:center}
+.itile.mystery{cursor:default;opacity:.8;border:1.5px dashed var(--line)}
+.jk-reveal{display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.06);border-radius:16px;padding:10px 14px;width:100%;box-sizing:border-box}
+.ov.rank .jk-reveal{opacity:0;animation:fadeUp .45s ease-out 1.25s forwards}
+.un-daily{align-self:flex-start;font:700 12px var(--body);color:var(--flame);background:var(--flame-soft);border-radius:999px;padding:3px 10px;margin:2px 0 -2px}
