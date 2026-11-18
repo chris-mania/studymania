@@ -142,11 +142,11 @@ export async function localApi(path, method, body, day) {
     }
     if (b.exam?.total > 0) c.exams.push({ day, score: b.exam.score, total: b.exam.total });
     const xp = Math.min(800, Math.max(0, parseInt(b.xp, 10) || 0));
-    const u = d.user, counts = b.counts !== false;
-    if (u.paused_since && counts) endBreakLocal(u, day);
+    const u = d.user, counts = b.counts !== false, lights = counts && b.streak !== false;
+    if (u.paused_since && lights) endBreakLocal(u, day);
     let usedFreeze = 0, earnedFreeze = false;
     u.xp = (u.xp || 0) + xp; u.points = (u.points || 0) + xp;
-    if (counts && u.last_study_day !== day) {
+    if (lights && u.last_study_day !== day) {
       const st = streakState(u, day);
       if (st.protectedBy) { usedFreeze = st.protectedBy; u.freezes = (u.freezes || 0) - usedFreeze; u.streak = (u.streak || 0) + 1; }
       else u.streak = st.streak ? (u.streak || 0) + 1 : 1;

@@ -599,6 +599,7 @@ route(/^\/$/, () => {
         <div class="grow hero-text">
           <div class="h2-streak">${user.streak}-day streak</div>
           <p class="h2-goal ${G.done ? "done" : ""}">${user.paused_since ? "🏖️ On break · your streak is saved" : G.done ? `✓ Done for today · ${did} of ${plural(goal, G.unit)}` : `${did} of ${plural(goal, G.unit)} today`}${G.bonus ? ` <span class="pill acc">+${G.bonus} bonus</span>` : ""}</p>
+          ${!lit && !user.paused_since && plannedToday() > 0 ? `<p class="small" style="margin:2px 0 0;color:var(--flame);font-weight:700">🔥 Do a lesson to keep your streak</p>` : ""}
         </div>
         <div class="h2-pills"><a class="pill rankpill" href="#/ranks" aria-label="Your rank: ${esc(rankOf(user.xp).name)}">${emblemSVG(rankOf(user.xp), 22)}<span>${esc(rankOf(user.xp).name)}</span></a><span class="pill xp-pill">⚡ ${fmt(user.xp)}</span>${user.freezes ? `<span class="pill" title="Streak freezes: each one covers a missed day">❄️ ${user.freezes}</span>` : ""}</div>
       </div>
@@ -1852,14 +1853,18 @@ route(/^\/s\/([\w-]+)\/(next|review|quiz|lesson|misses)(?:\/(\d+|all))?$/, async
   } else next();
 });
 
+// The 🔥 streak only lights from a lesson. When you have no lessons planned (all classes in review or finished),
+// reviews, cram and practice exams light it instead. Games never do.
+const reviewKeepsStreak = () => plannedToday() === 0;
 async function saveRound(body) {
+  if (body.streak === undefined) body.streak = body.kind === "lesson" || reviewKeepsStreak();
   const T = todayStr(), g0 = goalInfo(), before = { goalDone: g0.done, lit: ME.user.last_study_day === T }, xp0 = ME.user.xp || 0;
   let saved = null;
   try { saved = await postStudy(body); } catch (e) { toast(e.message); }
   if (saved) { ME.user = { ...ME.user, ...saved.user }; ME.today = saved.today; }
   else if (!GUEST) {
     ME.user.xp += body.xp;
-    if (body.counts !== false) {
+    if (body.counts !== false && body.streak !== false) {
       ME.today.rounds++; if (body.kind === "lesson") ME.today.lessons = (ME.today.lessons || 0) + 1; else ME.today.reviews = (ME.today.reviews || 0) + 1;
       if (!before.lit) { ME.user.streak = (ME.user.streak || 0) + 1; ME.user.last_study_day = T; }
     }
@@ -2273,7 +2278,7 @@ route(/^\/game\/([\w-]+)\/(fall|match|sort|tf)$/, async (id, kind) => {
     // Games are fast, so misses are NOT saved on their own: you pick which ones (if any) go to your missed words.
     // Right answers still count toward how well you know each word.
     const results = practiceResults(d, G.right.map((k) => k.id), []);
-    await saveRound({ course_id: id, kind: "review", results, xp: gameXp(score), counts: G.right.length + G.missed.length >= 5 });
+    await saveRound({ course_id: id, kind: "review", results, xp: gameXp(score), streak: false, counts: G.right.length + G.missed.length >= 5 });
     const uniq = missIds.map((cid) => d.cards.find((k) => k.id === cid)).filter(Boolean);
     const already = new Set(missedList(d));
     app.innerHTML = `<div class="sess"><div class="cele">

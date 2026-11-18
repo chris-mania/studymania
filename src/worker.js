@@ -544,11 +544,13 @@ async function api(req, env, url) {
         .bind(crypto.randomUUID(), user.id, course.id, day, Math.max(0, parseInt(b.exam.score, 10) || 0), Math.min(500, parseInt(b.exam.total, 10))));
     }
     const xp = Math.min(800, Math.max(0, parseInt(b.xp, 10) || 0));
-    if (user.paused_since && b.counts !== false) { await endBreak(env, user, day); Object.assign(user, await getUser(env, user.id)); }
+    if (user.paused_since && b.counts !== false && b.streak !== false) { await endBreak(env, user, day); Object.assign(user, await getUser(env, user.id)); }
     // A round only counts toward the streak and daily goal if it was finished (or 80% done).
     const counts = b.counts !== false;
+    // The streak only lights from a lesson (or a review when you have no lessons left); the app says which with b.streak.
+    const lights = counts && b.streak !== false;
     let streak = user.streak || 0, freezes = user.freezes || 0, usedFreeze = 0, earnedFreeze = false;
-    if (counts && user.last_study_day !== day) {
+    if (lights && user.last_study_day !== day) {
       const st = streakState(user, day);
       if (st.protectedBy) { usedFreeze = st.protectedBy; freezes -= usedFreeze; streak += 1; }
       else streak = st.streak ? streak + 1 : 1;
@@ -557,7 +559,7 @@ async function api(req, env, url) {
     stmts.push(env.DB.prepare(`INSERT INTO days (user_id, day, xp, rounds, lessons, reviews) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(user_id, day) DO UPDATE SET
         xp = xp + excluded.xp, rounds = rounds + excluded.rounds, lessons = lessons + excluded.lessons, reviews = reviews + excluded.reviews`)
       .bind(user.id, day, xp, counts ? 1 : 0, isLesson ? 1 : 0, isReview ? 1 : 0));
-    if (counts) stmts.push(env.DB.prepare("UPDATE users SET xp = xp + ?, points = COALESCE(points, 0) + ?, streak = ?, freezes = ?, best_streak = MAX(best_streak, ?), last_study_day = ? WHERE id = ?").bind(xp, xp, streak, freezes, streak, day, user.id));
+    if (lights) stmts.push(env.DB.prepare("UPDATE users SET xp = xp + ?, points = COALESCE(points, 0) + ?, streak = ?, freezes = ?, best_streak = MAX(best_streak, ?), last_study_day = ? WHERE id = ?").bind(xp, xp, streak, freezes, streak, day, user.id));
     else stmts.push(env.DB.prepare("UPDATE users SET xp = xp + ?, points = COALESCE(points, 0) + ? WHERE id = ?").bind(xp, xp, user.id));
     await runBatch(env, stmts);
     return json({ user: publicUser(await getUser(env, user.id), day), today: await today(env, user.id, day), used_freeze: usedFreeze, earned_freeze: earnedFreeze });
