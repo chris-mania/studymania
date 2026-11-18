@@ -858,7 +858,7 @@ route(/^\/ranks$/, () => {
 });
 
 // ---------- shop ----------
-const SHOP_SECTIONS = [["top", "Tops"], ["hat", "Hats"], ["glasses", "Glasses"], ["hair", "Hairstyles"], ["color", "Hair colors"]];
+const SHOP_SECTIONS = [["top", "Tops"], ["hat", "Hats"], ["glasses", "Glasses"], ["hair", "Hairstyles"]];
 function itemState(it) {
   const p = myPet(), xp = ME.user.xp || 0;
   if (it.slot === "freeze") return (ME.user.freezes || 0) >= FREEZE_MAX ? "full" : "buy";
@@ -872,7 +872,7 @@ function itemState(it) {
 const MANNEQUIN = { species: "fuzz", skin: "#8b929f", eye: "#555b66", hair: "none", color: "white", days: 60, owned: [], wear: {}, name: "" };
 function previewPet(it, size = 84, anim = false) {
   const mine = myPet(), base = !mine ? SAMPLE_PET : stageOf(mine.days).id === "egg" ? MANNEQUIN : mine, p = { ...base, wear: { ...(base.wear || {}) } };
-  if (it.slot === "hair") p.hair = it.id; else if (it.slot === "color") p.color = it.id; else if (it.slot !== "freeze") p.wear[it.slot] = it.id;
+  if (it.slot === "hair") p.hair = it.id; else if (it.slot !== "freeze") p.wear[it.slot] = it.id;
   if (it.slot === "hat" || it.slot === "glasses") {} // keep the rest of the outfit so you see how it goes together
   return petSVG(p, { size, adult: stageOf(base.days).id !== "elder", stage: stageOf(base.days).id === "elder" ? "elder" : "adult", anim, faceless: base === MANNEQUIN });
 }
@@ -902,11 +902,11 @@ function itemSheet(it, redraw) {
     e.target.disabled = true;
     try { await petPost("/shop/buy", { item: it.id }); } catch (er) { e.target.disabled = false; return toast(er.message); }
     chime("win"); confetti(0.7); buzz([15, 40, 15]);
-    if (it.slot !== "freeze") { try { await petPost("/pet", ["hair", "color"].includes(it.slot) ? { [it.slot]: it.id } : { wear: { [it.slot]: it.id } }); } catch {} toast(`${esc(it.name)} is yours, and you're wearing it.`); }
+    if (it.slot !== "freeze") { try { await petPost("/pet", it.slot === "hair" ? { hair: it.id } : { wear: { [it.slot]: it.id } }); } catch {} toast(`${esc(it.name)} is yours, and you're wearing it.`); }
     else toast("Streak freeze added. ❄️");
     after();
   };
-  if (el.querySelector("#is-wear")) el.querySelector("#is-wear").onclick = async () => { try { await petPost("/pet", ["hair", "color"].includes(it.slot) ? { [it.slot]: it.id } : { wear: { [it.slot]: it.id } }); } catch (er) { return toast(er.message); } after(); };
+  if (el.querySelector("#is-wear")) el.querySelector("#is-wear").onclick = async () => { try { await petPost("/pet", it.slot === "hair" ? { hair: it.id } : { wear: { [it.slot]: it.id } }); } catch (er) { return toast(er.message); } after(); };
   if (el.querySelector("#is-off")) el.querySelector("#is-off").onclick = async () => { try { await petPost("/pet", { wear: { [it.slot]: null } }); } catch (er) { return toast(er.message); } after(); };
 }
 route(/^\/shop$/, () => {
@@ -919,7 +919,7 @@ route(/^\/shop$/, () => {
     app.innerHTML = `${topbar("/")}<div class="stack">
       <div class="spread"><h1 style="margin:0">Shop</h1><span class="pill pts">🪙 ${fmt(ME.user.points || 0)}</span></div>
       ${p && stageOf(p.days).id === "egg" ? `<p class="muted small">Your egg hasn't hatched yet, so items are shown on a stand-in. Anything you buy will be waiting when it hatches.</p>` : ""}
-      ${p ? `<a class="lockerlink" href="#/locker"><div>${petSVG(p, { size: 64 })}</div><div class="grow"><b>${petName(p)}'s locker room</b><span class="muted small">Change outfits, hair and name</span></div><span class="go-arrow">›</span></a>`
+      ${p ? `<a class="lockerlink" href="#/locker"><div>${petSVG(p, { size: 64 })}</div><div class="grow"><b>${petName(p)}'s locker room</b><span class="muted small">Change outfits, hairstyle and name</span></div><span class="go-arrow">›</span></a>`
         : `<section class="card eggcard"><div class="ec-egg">${petSVG({ ...SAMPLE_PET, days: 0 }, { stage: "egg", size: 70 })}</div><div class="grow stack" style="gap:6px"><b>Claim your free Maniac egg first</b><span class="muted small">Comes with 🪙 1,000 points to spend here.</span><div><button class="btn primary sm" id="egg-claim">Claim it</button></div></div></section>`}
       <p class="muted small">Points come from every lesson, review, practice exam and game (same as the XP you earn). Spending points never lowers your rank.</p>
       ${section("❄️ Streak freeze", visible.filter((it) => it.slot === "freeze"), `Saves your streak if you miss a day. Hold up to ${FREEZE_MAX}.`)}
@@ -931,7 +931,9 @@ route(/^\/shop$/, () => {
         const mystery = `<div class="itile mystery"><div class="bigicon sm">❓</div><b>${!p ? "Claim your egg" : !hatched ? "Hatch your egg" : `Reach ${esc(next ? (next.rank >= 12 ? "Study Maniac" : TIERS[next.rank][0]) : "")}`}</b><span class="itag lock">🔒 Mystery jacket</span></div>`;
         return `<h3 class="shop-h">✨ Rank jackets</h3><p class="muted small" style="margin:-4px 0 6px">A secret shiny jacket for every rank. Each one only shows up once you reach it.</p><div class="igrid">${got.map(tile).join("")}${next || !hatched ? mystery : ""}</div>`;
       })()}
-      ${SHOP_SECTIONS.map(([slot, title]) => section(title, visible.filter((it) => it.slot === slot && it.rank == null && !it.season))).join("")}
+      ${SHOP_SECTIONS.map(([slot, title]) => slot === "hair" && p && stageOf(p.days).id === "egg"
+        ? `<h3 class="shop-h">${title}</h3><p class="muted small" style="margin:-4px 0 6px">🥚 Hairstyles show up once your egg hatches. No peeking at what's inside!</p>`
+        : section(title, visible.filter((it) => it.slot === slot && it.rank == null && !it.season))).join("")}
     </div>`;
     app.querySelectorAll("[data-it]").forEach((b) => (b.onclick = () => itemSheet(item(b.dataset.it), draw)));
     if ($("egg-claim")) $("egg-claim").onclick = claimEgg;
@@ -948,7 +950,7 @@ route(/^\/locker$/, () => {
     const st = stageOf(p.days), nx = nextStage(p.days), xp = ME.user.xp || 0, egg = st.id === "egg";
     const prog = nx ? Math.round(((p.days - st.min) / (nx.min - st.min)) * 100) : 100;
     const owned = ITEMS.filter((it) => it.slot === tab && owns(p, xp, it.id));
-    const cur = ["hair", "color"].includes(tab) ? p[tab] : p.wear?.[tab];
+    const cur = tab === "hair" ? p.hair : p.wear?.[tab];
     app.innerHTML = `${topbar("/")}<div class="stack">
       <section class="card locker">
         <div class="lk-stage"><div class="lk-floor"></div>${petSVG(p, { size: 180 })}</div>
@@ -957,7 +959,7 @@ route(/^\/locker$/, () => {
         ${nx ? `<div class="bar" role="img" aria-label="${prog}% to ${nx.name}" style="margin-top:8px"><i style="width:${prog}%"></i></div><p class="muted small" style="margin:4px 0 0">Grows on days you finish all your lessons. ${plural(nx.min - p.days, "more day")} to ${nx.name}.</p>` : ""}
       </section>
       ${egg ? `<p class="muted">Clothes and hair unlock once it hatches. You can still shop now; it'll wear them when it's out.</p>` : `
-      <div class="tabs lk-tabs" role="group" aria-label="What to change">${[["top", "Tops"], ["hat", "Hats"], ["glasses", "Glasses"], ["hair", "Hair"], ["color", "Color"]].map(([k, l]) => `<button type="button" data-tab="${k}" aria-pressed="${tab === k}">${l}</button>`).join("")}</div>
+      <div class="tabs lk-tabs" role="group" aria-label="What to change">${[["top", "Tops"], ["hat", "Hats"], ["glasses", "Glasses"], ["hair", "Hair"]].map(([k, l]) => `<button type="button" data-tab="${k}" aria-pressed="${tab === k}">${l}</button>`).join("")}</div>
       <div class="igrid">
         ${["top", "glasses", "hat"].includes(tab) ? `<button type="button" class="itile ${!cur ? "wearing" : ""}" data-wear=""><div class="bigicon sm">🚫</div><b>None</b>${!cur ? `<span class="itag on">Wearing</span>` : ""}</button>` : ""}
         ${owned.map((it) => `<button type="button" class="itile ${cur === it.id ? "wearing" : ""}" data-wear="${it.id}">${previewPet(it, 76)}<b>${esc(it.name)}</b>${cur === it.id ? `<span class="itag on">Wearing</span>` : ""}</button>`).join("")}
@@ -973,7 +975,7 @@ route(/^\/locker$/, () => {
     app.querySelectorAll("[data-pm]").forEach((b) => (b.onclick = () => { store.set("sm-pet-mode", b.dataset.pm); draw(); }));
     app.querySelectorAll("[data-wear]").forEach((b) => (b.onclick = async () => {
       const id = b.dataset.wear || null;
-      try { await petPost("/pet", ["hair", "color"].includes(tab) ? { [tab]: id } : { wear: { [tab]: id } }); } catch (e) { return toast(e.message); }
+      try { await petPost("/pet", tab === "hair" ? { hair: id } : { wear: { [tab]: id } }); } catch (e) { return toast(e.message); }
       buzz(8); draw();
     }));
   };

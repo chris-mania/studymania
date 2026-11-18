@@ -23,7 +23,8 @@ export const stageOf = (days) => [...STAGES].reverse().find((s) => (days || 0) >
 export const nextStage = (days) => STAGES.find((s) => s.min > (days || 0)) || null;
 
 // ---------- the shop ----------
-// slot: hair | color | top | glasses | hat | freeze. season: [startMonth, endMonth] (1-12). rank: tier index needed (free once reached). elder: unlocks at the elder stage.
+// Hair color, skin and eyes are born traits: never sold or changed.
+// slot: hair | top | glasses | hat | freeze. season: [startMonth, endMonth] (1-12). rank: tier index needed (free once reached). elder: unlocks at the elder stage.
 export const ITEMS = [
   // hairstyles
   ["spiky", "hair", "Spiky mop", 600], ["swirl", "hair", "Swirl", 600], ["flame", "hair", "Flame", 600], ["wisps", "hair", "Wisps", 600],
@@ -31,8 +32,6 @@ export const ITEMS = [
   ["buns", "hair", "Space buns", 600], ["mohawk", "hair", "Mohawk", 600], ["swoop", "hair", "Side swoop", 600], ["braids", "hair", "Braids", 600],
   ["bowl", "hair", "Bowl cut", 600], ["bedhead", "hair", "Bedhead", 600], ["topknot", "hair", "Top knot", 600], ["wavy", "hair", "Wavy", 600],
   ["sprout", "hair", "Sprout curl", 600], ["curls", "hair", "Short curls", 600],
-  // hair colors
-  ...HAIR_COLORS.map(([id, name]) => [id, "color", name + " hair", 400]),
   // tops
   ["tee", "top", "Plain tee", 400], ["stripes", "top", "Striped tee", 400], ["tank", "top", "Tank top", 400], ["jersey", "top", "Sports jersey", 1000],
   ["hoodie", "top", "Hoodie", 1000], ["jean", "top", "Jean jacket", 1200], ["sweater", "top", "Heart sweater", 800], ["shirttie", "top", "Shirt & tie", 1000],
@@ -89,7 +88,7 @@ export function newPet(day, r = Math.random) {
   const species = pick(SPECIES, r);
   const hair = r() < 0.5 ? SIGNATURE[species] : pick(ITEMS.filter((x) => x.slot === "hair").map((x) => x.id), r);
   const color = pick(HAIR_COLORS, r)[0];
-  return { v: 1, claimed: day, name: "", species, skin: pick(SKINS, r), eye: pick(EYES, r), hair, color, days: 0, lastGrow: null, owned: [hair, color], wear: { top: null, glasses: null, hat: null } };
+  return { v: 1, claimed: day, name: "", species, skin: pick(SKINS, r), eye: pick(EYES, r), hair, color, days: 0, lastGrow: null, owned: [hair], wear: { top: null, glasses: null, hat: null } };
 }
 // What a user has unlocked without buying: rank jackets, the elder wizard hat, and what they were born with.
 export function owns(pet, xp, id) {
@@ -105,7 +104,7 @@ export function cleanPet(p) {
   return {
     v: 1, claimed: String(p.claimed).slice(0, 10), name: String(p.name || "").replace(/[<>]/g, "").trim().slice(0, 20),
     species: SPECIES.includes(p.species) ? p.species : "fuzz", skin: SKINS.includes(p.skin) ? p.skin : SKINS[0], eye: EYES.includes(p.eye) ? p.eye : EYES[0],
-    hair: okId(p.hair, "hair") || "spiky", color: okId(p.color, "color") || "black", days: Math.max(0, Math.min(5000, parseInt(p.days, 10) || 0)),
+    hair: okId(p.hair, "hair") || "spiky", color: HAIR_COLORS.some((h) => h[0] === p.color) ? p.color : "black", days: Math.max(0, Math.min(5000, parseInt(p.days, 10) || 0)),
     lastGrow: p.lastGrow ? String(p.lastGrow).slice(0, 10) : null, owned: [...new Set((Array.isArray(p.owned) ? p.owned : []).filter((id) => item(id)))].slice(0, 200),
     wear: { top: okId(p.wear?.top, "top"), glasses: okId(p.wear?.glasses, "glasses"), hat: okId(p.wear?.hat, "hat") },
   };
@@ -114,7 +113,7 @@ export function cleanPet(p) {
 // Pet edits and shop purchases. Shared rules: only wear what you own.
 export function petEdit(pet, b, xp) {
   if (typeof b.name === "string") pet.name = b.name.replace(/[<>]/g, "").trim().slice(0, 20);
-  for (const slot of ["hair", "color"]) if (b[slot] !== undefined) {
+  for (const slot of ["hair"]) if (b[slot] !== undefined) {
     if (!owns(pet, xp, b[slot]) || item(b[slot]).slot !== slot) return { error: "You don't own that yet." };
     pet[slot] = b[slot];
   }
