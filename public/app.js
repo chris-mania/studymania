@@ -850,12 +850,12 @@ function itemState(it) {
   return "buy";
 }
 // Until your egg hatches, items are shown on a plain grey stand-in, so the shop doesn't spoil what's inside.
-const MANNEQUIN = { species: "fuzz", skin: "#aab2c0", eye: "#555b66", hair: "buzz", color: "white", days: 60, owned: [], wear: {}, name: "" };
+const MANNEQUIN = { species: "fuzz", skin: "#8b929f", eye: "#555b66", hair: "none", color: "white", days: 60, owned: [], wear: {}, name: "" };
 function previewPet(it, size = 84, anim = false) {
   const mine = myPet(), base = !mine ? SAMPLE_PET : stageOf(mine.days).id === "egg" ? MANNEQUIN : mine, p = { ...base, wear: { ...(base.wear || {}) } };
   if (it.slot === "hair") p.hair = it.id; else if (it.slot === "color") p.color = it.id; else if (it.slot !== "freeze") p.wear[it.slot] = it.id;
   if (it.slot === "hat" || it.slot === "glasses") {} // keep the rest of the outfit so you see how it goes together
-  return petSVG(p, { size, adult: stageOf(base.days).id !== "elder", stage: stageOf(base.days).id === "elder" ? "elder" : "adult", anim });
+  return petSVG(p, { size, adult: stageOf(base.days).id !== "elder", stage: stageOf(base.days).id === "elder" ? "elder" : "adult", anim, faceless: base === MANNEQUIN });
 }
 function stateTag(it, st) {
   if (st === "wearing") return `<span class="itag on">Wearing</span>`;

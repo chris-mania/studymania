@@ -299,8 +299,9 @@ export function petSVG(p, opts = {}) {
   const glassesId = wear.glasses || (elder ? "elder" : null);
   const top = wear.top ? topSVG(wear.top, id) : "";
   const elderBits = elder ? `<path d="M${g.ex[0] - 13} ${g.eyeY - 12} Q${g.ex[0]} ${g.eyeY - 20} ${g.ex[0] + 11} ${g.eyeY - 10}" fill="none" stroke="#e3e7ee" stroke-width="5" stroke-linecap="round"/><path d="M${g.ex[1] - 11} ${g.eyeY - 10} Q${g.ex[1]} ${g.eyeY - 20} ${g.ex[1] + 13} ${g.eyeY - 12}" fill="none" stroke="#e3e7ee" stroke-width="5" stroke-linecap="round"/>${mood === "idle" ? `<path d="M45 ${g.mouthY + 3} Q52 ${g.mouthY - 5} 60 ${g.mouthY + 1} Q68 ${g.mouthY - 5} 75 ${g.mouthY + 3} Q68 ${g.mouthY + 9} 60 ${g.mouthY + 5} Q52 ${g.mouthY + 9} 45 ${g.mouthY + 3} Z" fill="#e3e7ee"/>` : ""}` : "";
-  const cheeks = mood === "sleep" || sp === "sticker" ? "" : `<ellipse cx="${g.ex[0] - 12}" cy="${g.cheekY}" rx="6" ry="3.5" fill="#ff7eb6" opacity=".45"/><ellipse cx="${g.ex[1] + 12}" cy="${g.cheekY}" rx="6" ry="3.5" fill="#ff7eb6" opacity=".45"/>`;
-  const inner = `${hideHair ? "" : mv(hp.back)}${bodySVG(sp, p.skin)}${top}${cheeks}${eyesSVG(sp, g, p.eye, mood, elder)}${elder && mood === "idle" ? "" : mouthSVG(g, mood)}${elderBits}${hideHair ? "" : mv(hp.front)}
+  const blank = !!opts.faceless; // the grey stand-in in the shop: no face at all
+  const cheeks = blank || mood === "sleep" || sp === "sticker" ? "" : `<ellipse cx="${g.ex[0] - 12}" cy="${g.cheekY}" rx="6" ry="3.5" fill="#ff7eb6" opacity=".45"/><ellipse cx="${g.ex[1] + 12}" cy="${g.cheekY}" rx="6" ry="3.5" fill="#ff7eb6" opacity=".45"/>`;
+  const inner = `${hideHair ? "" : mv(hp.back)}${bodySVG(sp, p.skin)}${top}${cheeks}${blank ? "" : eyesSVG(sp, g, p.eye, mood, elder)}${blank || (elder && mood === "idle") ? "" : mouthSVG(g, mood)}${blank ? "" : elderBits}${hideHair ? "" : mv(hp.front)}
     ${glassesId && mood !== "sleep" ? `<g transform="translate(${(g.ex[0] - 47)} ${eyeDy})">${glassesSVG(glassesId)}</g>` : ""}${hat ? mv(hatSVG(hat)) : ""}`;
   const scale = { baby: 0.6, kid: 0.74, teen: 0.88 }[stage] || 1;
   const moveCls = mood === "happy" ? "p-jump" : mood === "yikes" ? "p-shiver" : mood === "sleep" ? "p-breathe" : `p-${sp}${elder ? " p-slow" : ""}`;
