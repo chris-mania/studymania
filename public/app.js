@@ -1705,6 +1705,19 @@ route(/^\/s\/([\w-]+)\/(next|review|quiz|lesson|misses)(?:\/(\d+|all))?$/, async
     flushOutbox();
   };
   document.addEventListener("visibilitychange", onHide);
+  // Review before a lesson: "warmed up?" jumps to the lesson, keeping what you answered.
+  const warmN = kind === "review" ? store.get(`sm-warmup-${id}-${todayStr()}`, null) : null;
+  const warmBtn = () => (warmN ? `<button class="btn ghost small warmskip" id="warm-go">Feeling warmed up? Skip to Lesson ${warmN} →</button>` : "");
+  const warmHash = location.hash;
+  if (warmN) document.addEventListener("click", async function warm(e) {
+    if (location.hash !== warmHash) return document.removeEventListener("click", warm); // left this review
+    if (!e.target.closest || !e.target.closest("#warm-go")) return;
+    document.removeEventListener("click", warm);
+    if (S.i > 0) { const list = pending(), xp = S.xp - S.xpSent; if (list.length || xp) { try { await postStudy({ course_id: id, kind: "review", results: list.map(({ tb, ...r }) => r), xp, counts: false }); markSent(list); S.xpSent = S.xp; } catch {} } saveMissed(d, S.missed, []); }
+    store.del(`sm-warmup-${id}-${todayStr()}`); store.set(`sm-straight-${id}-${todayStr()}`, true); if (KEY) store.del(KEY);
+    await loadMe().catch(() => {});
+    go(`/s/${id}/next`);
+  });
   async function quit() {
     if (S.i === 0) return go(`/c/${id}`);
     const list = pending(), frac = S.i / steps.length, counts = frac >= COUNTS_AT && !S.counted;
@@ -1739,7 +1752,7 @@ route(/^\/s\/([\w-]+)\/(next|review|quiz|lesson|misses)(?:\/(\d+|all))?$/, async
     if (q.match) return showMatch(q, st, label);
     frame(`<div class="qbody"><p class="prompt">${q.html}</p>
       <div class="opts">${q.opts.map((o, j) => `<button class="opt" data-j="${j}"><span class="k">${"ABCD"[j]}</span><span>${esc(o)}</span></button>`).join("")}</div>
-      <button class="btn ghost idk" id="idk">I don't know</button></div><div id="fb"></div>`, label);
+      <button class="btn ghost idk" id="idk">I don't know</button>${warmBtn()}</div><div id="fb"></div>`, label);
     let done = false;
     app.querySelectorAll(".opt").forEach((b) => (b.onclick = () => { if (!done) { done = true; answer(q, st, b); } }));
     $("idk").onclick = () => { if (!done) { done = true; answer(q, st, null); } };
@@ -1750,7 +1763,7 @@ route(/^\/s\/([\w-]+)\/(next|review|quiz|lesson|misses)(?:\/(\d+|all))?$/, async
       <div class="match">${q.rows.map((r, i) => `<div class="mrow" data-i="${i}"><p>${esc(r.clue)}</p>
         <div class="mchips">${q.names.map((n, j) => `<button class="mchip" data-i="${i}" data-j="${j}">${esc(n)}</button>`).join("")}</div></div>`).join("")}</div>
       <button class="btn primary block" id="mcheck" disabled>Check</button>
-      <button class="btn ghost idk" id="idk">I don't know</button></div><div id="fb"></div>`, label);
+      <button class="btn ghost idk" id="idk">I don't know</button>${warmBtn()}</div><div id="fb"></div>`, label);
     let done = false;
     const paint = () => {
       app.querySelectorAll(".mchip").forEach((b) => b.classList.toggle("sel", pick[+b.dataset.i] === +b.dataset.j));
@@ -1815,6 +1828,7 @@ route(/^\/s\/([\w-]+)\/(next|review|quiz|lesson|misses)(?:\/(\d+|all))?$/, async
     let list = pending().filter((r) => kind !== "misses" || isLearned(d, { id: r.card_id }));
     if (mode === "learn") lesson.cards.forEach((k) => { if (!(k.id in S.results) && !S.sent.includes(k.id)) list.push({ card_id: k.id, ok: false, mode }); });
     if (kind === "misses") MISSES.del(id);
+    if (kind === "review") store.del(`sm-warmup-${id}-${todayStr()}`);
     if (KEY) store.del(KEY);
     const tbCount = Object.keys(S.tbResults).length;
     const r = await saveRound({ course_id: id, kind: mode === "learn" ? "lesson" : "review", results: list.map(({ tb, ...x }) => x), xp: S.xp - S.xpSent, counts: !S.counted });
@@ -1835,7 +1849,7 @@ route(/^\/s\/([\w-]+)\/(next|review|quiz|lesson|misses)(?:\/(\d+|all))?$/, async
       <p class="muted">${plural(dueNow, "word")} from earlier lessons ${dueNow > 1 ? "are" : "is"} due. A quick review (about ${reviewMins(dueNow)} min) locks them in before you add new ones.</p>
       <button class="btn rev block" id="ra-rev">🔁 Review ${plural(Math.min(12, dueNow), "word")} first</button>
       <button class="btn block" id="ra-go">Go straight to Lesson ${lesson.n}</button></div>`);
-    el.querySelector("#ra-rev").onclick = () => { el.remove(); go(`/s/${id}/review`); };
+    el.querySelector("#ra-rev").onclick = () => { el.remove(); store.set(`sm-warmup-${id}-${T}`, lesson.n); go(`/s/${id}/review`); };
     el.querySelector("#ra-go").onclick = () => { el.remove(); store.set(straightKey, true); next(); };
     return;
   }
