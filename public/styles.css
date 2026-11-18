@@ -668,3 +668,9 @@ details summary{list-style:revert}
 .ov.rank .jk-reveal{opacity:0;animation:fadeUp .45s ease-out 1.25s forwards}
 .un-daily{align-self:flex-start;font:700 12px var(--body);color:var(--flame);background:var(--flame-soft);border-radius:999px;padding:3px 10px;margin:2px 0 -2px}
 .warmskip{display:block;margin:0 auto;color:#b79cf7;font-size:15px}
+.p-eggjig{animation:pWob .9s ease-in-out infinite}
+.evo-stage.crack .evo-new{transform:none}
+.evo-stage.crackdone .evo-old{opacity:0;animation:none}
+.evo-stage.crackdone .evo-new{opacity:1;animation:crackPop .35s ease-out}
+@keyframes crackPop{0%{transform:scale(1.12) rotate(-4deg)}100%{transform:none}}
+.ov.crackov .kicker,.ov.crackov .ov-h,.ov.crackov p,.ov.crackov .btn{opacity:0;animation:fadeUp .4s ease-out 1.5s forwards}

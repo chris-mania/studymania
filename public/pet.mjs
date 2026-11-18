@@ -283,12 +283,14 @@ function hatSVG(id) { // drawn for a head top at y=42
     default: return "";
   }
 }
-function eggSVG(p, cracked) {
-  // Same colors on every egg, so it doesn't give away what's inside.
-  p = { skin: "#f2c94c" }; const c = "#9cc8f5";
-  return `<g class="p-wob"><path d="M60 14 C84 14 98 56 98 78 C98 100 82 112 60 112 C38 112 22 100 22 78 C22 56 36 14 60 14 Z" fill="#f4ead7"/>
-    <circle cx="44" cy="60" r="7" fill="${p.skin}"/><circle cx="74" cy="46" r="5" fill="${c}"/><circle cx="78" cy="86" r="8" fill="${p.skin}"/><circle cx="46" cy="96" r="5" fill="${c}"/>
-    ${cracked ? `<path d="M34 50 L44 58 L40 66 L50 72" fill="none" stroke="${INK}" stroke-width="2.5" stroke-linejoin="round"/><path d="M84 62 L76 70 L82 76" fill="none" stroke="${INK}" stroke-width="2.5" stroke-linejoin="round"/>` : ""}</g>`;
+// The egg cracks a bit more each study day: day 0 smooth, day 1 a small crack, day 2 big cracks + a chip. It hatches on day 3.
+function eggSVG(days) {
+  const k = Math.max(0, Math.min(2, days || 0)), c1 = "#f2c94c", c2 = "#9cc8f5";
+  const crack1 = `<path d="M60 16 L56 26 L63 32 L57 40" fill="none" stroke="${INK}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>`;
+  const crack2 = `<path d="M30 58 L40 62 L36 70 L46 74 L42 82" fill="none" stroke="${INK}" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"/><path d="M90 60 L80 66 L86 72 L77 78" fill="none" stroke="${INK}" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"/><path d="M57 40 L64 46 L60 52" fill="none" stroke="${INK}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/><path d="M64 20 L72 24 L68 30 Z" fill="#14161c" opacity=".85"/>`;
+  return `<g class="p-wob${k === 2 ? " p-eggjig" : ""}"><path d="M60 14 C84 14 98 56 98 78 C98 100 82 112 60 112 C38 112 22 100 22 78 C22 56 36 14 60 14 Z" fill="#f4ead7"/>
+    <circle cx="44" cy="60" r="7" fill="${c1}"/><circle cx="74" cy="46" r="5" fill="${c2}"/><circle cx="78" cy="86" r="8" fill="${c1}"/><circle cx="46" cy="96" r="5" fill="${c2}"/>
+    ${k >= 1 ? crack1 : ""}${k >= 2 ? crack2 : ""}</g>`;
 }
 
 // The whole pet. opts: stage ("egg"|"baby"|...|"elder", default from days), mood ("idle"|"happy"|"yikes"|"sleep"), size (px), anim (bool), adult (force grown look for previews), wear (override)
@@ -299,7 +301,7 @@ export function petSVG(p, opts = {}) {
   const id = ++uid;
   const label = `${p.name || "Your Maniac"}${stage === "egg" ? " (egg)" : ""}`;
   const shadow = `<ellipse cx="60" cy="116" rx="${stage === "baby" ? 20 : 30}" ry="4" fill="#000" opacity=".25"/>`;
-  if (stage === "egg") return `<svg class="pet ${anim ? "" : "still"}" viewBox="0 0 120 120" width="${size}" height="${size}" role="img" aria-label="${esc(label)}">${shadow}${eggSVG(p, p.days >= 2)}</svg>`;
+  if (stage === "egg") return `<svg class="pet ${anim ? "" : "still"}" viewBox="0 0 120 120" width="${size}" height="${size}" role="img" aria-label="${esc(label)}">${shadow}${eggSVG(opts.days ?? p.days)}</svg>`;
   const sp = p.species, mood = opts.mood || "idle", elder = stage === "elder";
   const wear = { ...(p.wear || {}), ...(opts.wear || {}) };
   // Wearing a top lifts the face a little so the shirt has room (the face itself never changes).

@@ -745,6 +745,19 @@ async function evolveOverlay(before, after) {
   if (hatch && !p.name) nameSheet();
 }
 
+// A study day while it's still an egg: it wobbles, then a new crack appears.
+async function crackOverlay(days) {
+  const p = myPet(); if (!p) return;
+  const left = Math.max(1, 3 - days);
+  const el = overlay(`<div class="evo-stage crack"><div class="evo-old">${petSVG(p, { days: days - 1, size: 170 })}</div><div class="evo-new">${petSVG(p, { days, size: 170 })}</div></div>
+    <div class="kicker">Crack!</div><h1 class="ov-h">${p.name ? esc(p.name) + "'s egg" : "Your egg"} is cracking</h1>
+    <p class="muted">${left === 1 ? "Finish your lessons tomorrow and it hatches!" : `${plural(left, "more study day")} until it hatches.`}</p>
+    <button class="btn primary block ov-ok">Can't wait</button>`, "crackov");
+  const st = el.querySelector(".evo-stage");
+  await sleepMs(350); st.classList.add("shake"); buzz([15, 60, 15]);
+  await sleepMs(1100); st.classList.add("crackdone"); chime("good"); buzz(30);
+  await waitClose(el);
+}
 function nameSheet(after) {
   const p = myPet(); if (!p) return;
   const el = sheet(`<h2>Name your Maniac</h2><div class="center">${petSVG(p, { size: 110 })}</div>
@@ -772,6 +785,7 @@ async function petGrowDay() {
   if (!r.grew) return;
   const p = myPet();
   if (r.before !== r.after) queueOverlay(() => sleepMs(900).then(() => evolveOverlay(r.before, r.after)));
+  else if (r.after === "egg") queueOverlay(() => sleepMs(900).then(() => crackOverlay(p.days)));
   else { const n = nextStage(p.days); toast(`🌱 ${p.name || "Your Maniac"} grew a day${n ? `: ${plural(n.min - p.days, "more day")} until ${n.name}` : ""}.`, 3500); }
 }
 
@@ -1722,6 +1736,7 @@ route(/^\/s\/([\w-]+)\/(next|review|quiz|lesson|misses)(?:\/(\d+|all))?$/, async
     if (S.i === 0) return go(`/c/${id}`);
     const list = pending(), frac = S.i / steps.length, counts = frac >= COUNTS_AT && !S.counted;
     const xp = S.xp - S.xpSent;
+    if (kind === "review" && frac >= COUNTS_AT) store.set(`sm-straight-${id}-${todayStr()}`, true);
     if (list.length || xp || counts) {
       try { await postStudy({ course_id: id, kind: mode === "learn" ? "lesson" : "review", results: list.map(({ tb, ...r }) => r), xp, counts }); markSent(list); S.xpSent = S.xp; if (counts) S.counted = true; } catch (e) { toast(e.message); }
     }
@@ -1828,7 +1843,8 @@ route(/^\/s\/([\w-]+)\/(next|review|quiz|lesson|misses)(?:\/(\d+|all))?$/, async
     let list = pending().filter((r) => kind !== "misses" || isLearned(d, { id: r.card_id }));
     if (mode === "learn") lesson.cards.forEach((k) => { if (!(k.id in S.results) && !S.sent.includes(k.id)) list.push({ card_id: k.id, ok: false, mode }); });
     if (kind === "misses") MISSES.del(id);
-    if (kind === "review") store.del(`sm-warmup-${id}-${todayStr()}`);
+    // Just reviewed this class: don't ask "Review first?" again before today's lessons.
+    if (kind === "review") { store.del(`sm-warmup-${id}-${todayStr()}`); store.set(`sm-straight-${id}-${todayStr()}`, true); }
     if (KEY) store.del(KEY);
     const tbCount = Object.keys(S.tbResults).length;
     const r = await saveRound({ course_id: id, kind: mode === "learn" ? "lesson" : "review", results: list.map(({ tb, ...x }) => x), xp: S.xp - S.xpSent, counts: !S.counted });
