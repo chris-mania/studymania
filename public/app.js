@@ -132,7 +132,8 @@ function countUp(el, to, ms = 900) {
 // ---------- state ----------
 let ME = null;
 const courseCache = {};
-let MISSES = {}; // courseId -> card ids missed on the last practice exam
+// Words missed on the last practice exam (per class), kept on this device so a reload doesn't lose them.
+const MISSES = { get: (id) => store.get("sm-exammiss-" + id, []), set: (id, v) => store.set("sm-exammiss-" + id, v), del: (id) => store.del("sm-exammiss-" + id) };
 
 async function loadMe() { ME = await api("/me"); return ME; }
 async function loadCourse(id) {
@@ -1329,7 +1330,7 @@ route(/^\/s\/([\w-]+)\/(next|review|quiz|lesson|misses)(?:\/(\d+|all))?$/, async
     pickThrowbacks(d.cards, d.progress, new Set(lesson.cards.map((k) => k.id)), T, 3 + Math.min(2, Math.floor(d.cards.filter((k) => (know(d, k) ?? 10) < 6.5).length / 6))).forEach((k, j) => steps.push({ t: j % 2 ? "recap" : "check", k, tb: true }));
   } else {
     let pool;
-    if (kind === "misses") pool = d.cards.filter((k) => (MISSES[id] || []).includes(k.id));
+    if (kind === "misses") pool = d.cards.filter((k) => MISSES.get(id).includes(k.id));
     else {
       pool = d.cards.filter((k) => isLearned(d, k));
       // Review: words that are due, plus words it's time to see again by their "Know it" score
@@ -1343,8 +1344,12 @@ route(/^\/s\/([\w-]+)\/(next|review|quiz|lesson|misses)(?:\/(\d+|all))?$/, async
       pool = pool.slice(0, kind === "review" ? (num === "all" ? Infinity : 12) : 10);
     }
     if (!pool.length) { toast(kind === "review" ? "Nothing due yet. Nice." : "Learn a lesson first."); return go(`/c/${id}`); }
-    if (kind === "misses") pool.forEach((k) => { d.seen.add(k.id); steps.push({ t: "teach", k, again: true }); });
-    shuffle(pool).forEach((k, i) => steps.push({ t: i % 2 ? "recap" : "check", k }));
+    if (kind === "misses") {
+      // Exam misses work like a daily lesson: each word's card then a quick check, then a mixed recap.
+      // Get one wrong and its card comes back with the question asked a different way.
+      pool.forEach((k) => { d.seen.add(k.id); steps.push({ t: "teach", k, again: true }, { t: "check", k }); });
+      shuffle([...pool]).forEach((k) => steps.push({ t: "recap", k }));
+    } else shuffle(pool).forEach((k, i) => steps.push({ t: i % 2 ? "recap" : "check", k }));
   }
 
   // Round state. Lessons are saved on this device so you can pick up where you left off.
@@ -1419,7 +1424,7 @@ route(/^\/s\/([\w-]+)\/(next|review|quiz|lesson|misses)(?:\/(\d+|all))?$/, async
       : st.def ? (st.t === "check" ? termQ(d, st.k) : meaningQ(d, st.k))
       : st.t === "check" ? meaningQ(d, st.k)
       : hasExample(st.k) && (st.k.scenario || Math.random() < 0.5) ? exampleQ(d, st.k) : termQ(d, st.k);
-    const label = st.tb ? `Throwback · from Lesson ${lessonOf[st.k.id]}` : mode === "learn" ? (st.t === "check" ? "Quick check" : "Recap") : kind === "review" ? `🔁 Review · from Lesson ${lessonOf[st.k.id]}` : kind === "misses" ? "Fix your misses" : "Practice";
+    const label = st.tb ? `Throwback · from Lesson ${lessonOf[st.k.id]}` : mode === "learn" ? (st.t === "check" ? "Quick check" : "Recap") : kind === "review" ? `🔁 Review · from Lesson ${lessonOf[st.k.id]}` : kind === "misses" ? (st.t === "check" ? "Quick check · exam miss" : "Recap · exam misses") : "Practice";
     if (q.match) return showMatch(q, st, label);
     frame(`<div class="qbody"><p class="prompt">${q.html}</p>
       <div class="opts">${q.opts.map((o, j) => `<button class="opt" data-j="${j}"><span class="k">${"ABCD"[j]}</span><span>${esc(o)}</span></button>`).join("")}</div>
@@ -1472,11 +1477,11 @@ route(/^\/s\/([\w-]+)\/(next|review|quiz|lesson|misses)(?:\/(\d+|all))?$/, async
     if (ok) { S.combo++; S.best = Math.max(S.best, S.combo); S.right++; S.xp += first ? 10 : 5; chime("good"); buzz(15); }
     else { S.combo = 0; if (!idk) { chime("bad"); buzz([30, 40, 30]); } if (!S.missed.includes(k.id)) S.missed.push(k.id); }
     if (st.tb) { if (!(k.id in S.tbResults)) S.tbResults[k.id] = ok; }
-    else if (mode === "learn" && st.t === "recap" && !(k.id in S.results)) S.results[k.id] = ok && !S.missed.includes(k.id);
-    else if (mode === "review" && !(k.id in S.results)) S.results[k.id] = ok;
+    else if ((mode === "learn" || kind === "misses") && st.t === "recap" && !(k.id in S.results)) S.results[k.id] = ok && !S.missed.includes(k.id);
+    else if (mode === "review" && kind !== "misses" && !(k.id in S.results)) S.results[k.id] = ok;
     if (!ok) {
       // Comes back asked a different way: a definition question after a situation one, and the other way around.
-      if (mode === "learn" && !st.tb) steps.splice(Math.min(S.i + 3, steps.length), 0, { t: "teach", k, again: true }, { t: st.t, k, retry: true, def: !st.def });
+      if ((mode === "learn" || kind === "misses") && !st.tb) steps.splice(Math.min(S.i + 3, steps.length), 0, { t: "teach", k, again: true }, { t: st.t, k, retry: true, def: !st.def });
       else steps.push({ t: st.t === "check" ? "recap" : "check", k, retry: true, tb: st.tb, def: !st.def });
     }
     const praise = S.combo >= 5 ? `${S.combo} in a row!` : ["Nice!", "Correct!", "You got it!", "Yes!"][(Math.random() * 4) | 0];
@@ -1495,15 +1500,15 @@ route(/^\/s\/([\w-]+)\/(next|review|quiz|lesson|misses)(?:\/(\d+|all))?$/, async
     const accuracy = S.asked ? Math.round((S.right / S.asked) * 100) : 100;
     let list = pending().filter((r) => kind !== "misses" || isLearned(d, { id: r.card_id }));
     if (mode === "learn") lesson.cards.forEach((k) => { if (!(k.id in S.results) && !S.sent.includes(k.id)) list.push({ card_id: k.id, ok: false, mode }); });
-    if (kind === "misses") delete MISSES[id];
+    if (kind === "misses") MISSES.del(id);
     if (KEY) store.del(KEY);
     const tbCount = Object.keys(S.tbResults).length;
     const r = await saveRound({ course_id: id, kind: mode === "learn" ? "lesson" : "review", results: list.map(({ tb, ...x }) => x), xp: S.xp - S.xpSent, counts: !S.counted });
     saveMissed(d, S.missed, []);
     celebrate(r, {
       xp: S.xp, accuracy, best: S.best, after: mode,
-      text: mode === "learn" ? `You learned ${plural(lesson.cards.length, "new word")} in ${esc(lesson.topic)}${tbCount ? ` and refreshed ${plural(tbCount, "older one")}` : ""}.` : `${S.right} of ${S.asked} right.`,
-      title: mode === "learn" ? "Lesson complete!" : "Round complete!",
+      text: kind === "misses" ? `You re-learned ${plural(new Set(steps.map((x) => x.k.id)).size, "word")} from your practice exam. ${S.right} of ${S.asked} right.` : mode === "learn" ? `You learned ${plural(lesson.cards.length, "new word")} in ${esc(lesson.topic)}${tbCount ? ` and refreshed ${plural(tbCount, "older one")}` : ""}.` : `${S.right} of ${S.asked} right.`,
+      title: mode === "learn" || kind === "misses" ? "Lesson complete!" : "Round complete!",
     });
   }
 
@@ -2220,7 +2225,7 @@ route(/^\/exam\/([\w-]+)$/, async (id) => {
       const byTopic = {};
       graded.forEach((g) => { const t = g.q.topic || "General"; byTopic[t] ||= { r: 0, n: 0 }; byTopic[t].n++; if (g.ok) byTopic[t].r++; });
       const missCards = [...new Set(graded.filter((g) => !g.ok && g.q.k).map((g) => g.q.k.id))];
-      MISSES[id] = missCards;
+      MISSES.set(id, missCards);
       saveMissed(d, missCards, []);
       const before = await saveRound({ course_id: id, kind: "exam", xp: score * 5 + (pct === 100 ? 20 : 0), exam: { score, total: qs.length },
         results: practiceResults(d, graded.filter((g) => g.ok && g.q.k).map((g) => g.q.k.id), missCards) });
@@ -2232,7 +2237,7 @@ route(/^\/exam\/([\w-]+)$/, async (id) => {
           const tp = Math.round((v.r / v.n) * 100);
           return `<div class="stack" style="gap:4px"><div class="spread small"><span>${esc(t)}</span><b style="color:${tp >= 80 ? "var(--good)" : tp >= 60 ? "var(--gold)" : "var(--bad)"}">${v.r}/${v.n}</b></div><div class="bar" style="height:8px"><i style="width:${tp}%;background:${tp >= 80 ? "var(--good)" : tp >= 60 ? "var(--gold)" : "var(--bad)"}"></i></div></div>`;
         }).join("")}</div>
-        ${missCards.length ? `<button class="btn primary block" id="r-miss">Study the ${missCards.length === 1 ? "word" : missCards.length + " words"} you missed</button>` : ""}
+        ${missCards.length ? `<button class="btn primary block" id="r-miss">📘 Learn the ${missCards.length === 1 ? "word" : missCards.length + " words"} you missed</button><p class="small muted" style="margin:-6px 0 0;text-align:center">Like a daily lesson: see each card, then get quizzed on it.</p>` : ""}
         ${graded.some((g) => !g.ok) ? `<h3>What you missed</h3>${graded.filter((g) => !g.ok).map((g) => `<div class="card stack" style="gap:8px">
           <p class="prompt" style="font-size:18px">${g.q.html}</p>
           ${g.pick !== null ? `<p class="small" style="color:var(--bad)">✗ You said: ${esc(g.q.opts[g.pick])}</p>${(() => { const w = whatPicked(d, g.q.opts[g.pick], g.q.ans); return w ? `<p class="small muted">${w.isWord ? `<b>${esc(w.term)}</b> means: ${esc(w.simple)}` : `That's the meaning of <b>${esc(w.term)}</b>.`}</p>` : ""; })()}` : `<p class="small muted">You said you didn't know</p>`}
