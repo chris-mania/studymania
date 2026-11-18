@@ -2081,7 +2081,7 @@ route(/^\/exam\/([\w-]+)$/, async (id) => {
   try { d = await loadCourse(id); } catch (e) { toast(e.message); return go("/"); }
   const learnedTopics = new Set(d.cards.filter((k) => isLearned(d, k)).map((k) => k.topic));
   const topics = [...new Set(d.cards.map((k) => k.topic))];
-  const S = { count: 20, from: learnedTopics.size ? "learned" : "all", timer: false, topics: new Set(topics) };
+  const S = { count: 20, from: learnedTopics.size ? "learned" : "all", timer: false, topics: new Set(topics), instant: store.get("sm-exam-instant", false) };
   const coverKey = "sm-examcov-" + id, examCovered = () => store.get(coverKey, []);
   const poolFor = () => {
     const okTopic = (t) => S.topics.has(t) && (S.from === "all" || learnedTopics.has(t));
@@ -2091,10 +2091,11 @@ route(/^\/exam\/([\w-]+)$/, async (id) => {
     const p = poolFor(), avail = p.cards.length + p.qs.length;
     const seg = (name, vals, cur, fmt = (v) => v) => `<div class="seg wrap">${vals.map((v) => `<button type="button" data-${name}="${v}" aria-pressed="${String(cur) === String(v)}">${fmt(v)}</button>`).join("")}</div>`;
     app.innerHTML = `${topbar("/c/" + id)}<div class="stack">
-      <h1>Practice exam</h1><p class="muted">Like the real thing: no hints until the end. Then you see your score, your weak topics, and every miss explained.</p>
+      <h1>Practice exam</h1><p class="muted">${S.instant ? "See if each answer is right as you go. At the end you get your score, your weak topics, and every miss explained." : "Like the real thing: no hints until the end. Then you see your score, your weak topics, and every miss explained."}</p>
       <div class="card stack">
         <div class="field" style="font-weight:700;font-size:15px">Questions${seg("n", [10, 20, 30, 50], S.count)}</div>
         <div class="field" style="font-weight:700;font-size:15px">Cover${seg("from", ["learned", "all"], S.from, (v) => (v === "learned" ? "What I've learned" : "Everything"))}</div>
+        <div class="field" style="font-weight:700;font-size:15px">Answers${seg("fb", ["end", "instant"], S.instant ? "instant" : "end", (v) => (v === "instant" ? "Show right away" : "Score at the end"))}</div>
         <div class="field" style="font-weight:700;font-size:15px">Timer${seg("timer", ["off", "on"], S.timer ? "on" : "off", (v) => (v === "on" ? "1 min / question" : "Off"))}</div>
         <details><summary class="small" style="font-weight:700;cursor:pointer">Topics (${S.topics.size} of ${topics.length})</summary>
           <div class="stack" style="gap:6px;margin-top:10px">${topics.map((t) => `<label class="checkrow"><input type="checkbox" data-topic="${esc(t)}" ${S.topics.has(t) ? "checked" : ""}> ${esc(t)}</label>`).join("")}</div></details>
@@ -2105,6 +2106,7 @@ route(/^\/exam\/([\w-]+)$/, async (id) => {
       </div></div>`;
     app.querySelectorAll("[data-n]").forEach((b) => (b.onclick = () => { S.count = +b.dataset.n; setup(); }));
     app.querySelectorAll("[data-from]").forEach((b) => (b.onclick = () => { S.from = b.dataset.from; setup(); }));
+    app.querySelectorAll("[data-fb]").forEach((b) => (b.onclick = () => { S.instant = b.dataset.fb === "instant"; store.set("sm-exam-instant", S.instant); setup(); }));
     app.querySelectorAll("[data-timer]").forEach((b) => (b.onclick = () => { S.timer = b.dataset.timer === "on"; setup(); }));
     app.querySelectorAll("[data-topic]").forEach((b) => (b.onchange = () => { b.checked ? S.topics.add(b.dataset.topic) : S.topics.delete(b.dataset.topic); const o = app.querySelector("details").open; setup(); app.querySelector("details").open = o; }));
     $("e-go").onclick = () => run(p);
@@ -2141,18 +2143,32 @@ route(/^\/exam\/([\w-]+)$/, async (id) => {
       app.innerHTML = `<div class="sess">
         <div class="sesstop"><button class="iconbtn" id="x" aria-label="Quit">✕</button><div class="bar"><i style="width:${(i / qs.length) * 100}%"></i></div>
           <span class="combo" id="timer" style="color:var(--muted)">${endAt ? "" : `${i + 1}/${qs.length}`}</span></div>
-        ${classTag(d.course)}<div class="kicker">Question ${i + 1} of ${qs.length} · ${esc(q.topic || "")}</div>
+        ${classTag(d.course)}<div class="kicker">Question ${i + 1} of ${qs.length} · ${esc(q.topic || "")}${S.instant && i ? ` · ${answers.slice(0, i).filter((a, j) => a >= 0 && qs[j].opts[a] === qs[j].ans).length}/${i} right` : ""}</div>
         <div class="qbody"><p class="prompt">${q.html}</p>
         <div class="opts">${q.opts.map((o, j) => `<button class="opt ${answers[i] === j ? "sel" : ""}" data-j="${j}"><span class="k">${"ABCDE"[j]}</span><span>${esc(o)}</span></button>`).join("")}</div></div>
         <button class="btn ghost idk ${answers[i] === -1 ? "on" : ""}" id="e-idk">I don't know</button>
-        <div class="footbtn row">${i ? `<button class="btn" id="prev" aria-label="Previous question">◀</button>` : ""}<button class="btn primary grow" id="nx" ${answers[i] === null ? "disabled" : ""}>${i === qs.length - 1 ? "Finish exam" : "Next"}</button></div></div>`;
+        <div class="footbtn row" id="e-foot">${i && !S.instant ? `<button class="btn" id="prev" aria-label="Previous question">◀</button>` : ""}<button class="btn primary grow" id="nx" ${answers[i] === null ? "disabled" : ""}>${i === qs.length - 1 ? "Finish exam" : "Next"}</button></div><div id="fb"></div></div>`;
       if (endAt) tick();
       let armed = false;
       $("x").onclick = () => { if (armed) { clearInterval(timerId); return go(`/c/${id}`); } armed = true; toast("Tap ✕ again to quit the exam."); };
-      app.querySelectorAll(".opt").forEach((b) => (b.onclick = () => { answers[i] = +b.dataset.j; app.querySelectorAll(".opt").forEach((x) => x.classList.toggle("sel", x === b)); $("e-idk").classList.remove("on"); $("nx").disabled = false; buzz(8); }));
-      $("e-idk").onclick = () => { answers[i] = -1; app.querySelectorAll(".opt").forEach((x) => x.classList.remove("sel")); $("e-idk").classList.add("on"); $("nx").disabled = false; };
+      const next = () => { if (i < qs.length - 1) { i++; show(); } else done(); };
+      // "Show right away": lock the answer, show right/wrong and why, then Next.
+      const reveal = () => {
+        const ok = answers[i] >= 0 && q.opts[answers[i]] === q.ans;
+        app.querySelectorAll(".opt").forEach((x) => { x.disabled = true; const o = q.opts[+x.dataset.j]; x.classList.toggle("right", o === q.ans); x.classList.toggle("wrong", +x.dataset.j === answers[i] && !ok); if (o !== q.ans && +x.dataset.j !== answers[i]) x.classList.add("dim"); });
+        $("e-idk").hidden = true; $("e-foot").hidden = true;
+        const why = q.why || (q.k ? `${q.k.term}: ${q.k.simple}` : "");
+        $("fb").innerHTML = `<div class="feedback ${ok ? "ok" : "no"}"><h3>${ok ? "Correct!" : answers[i] === -1 ? "Here's the answer" : "Not quite"}</h3>
+          ${ok ? "" : `<p style="margin:0"><b>✓ ${esc(q.ans)}</b></p>`}${why ? `<p class="small" style="margin:0">${esc(why)}</p>` : ""}
+          <button class="btn primary block" id="e-next">${i === qs.length - 1 ? "See my score" : "Next"}</button></div>`;
+        chime(ok ? "good" : "bad"); buzz(ok ? 8 : [20, 40, 20]);
+        $("e-next").onclick = next; $("e-next").focus();
+      };
+      if (S.instant && answers[i] !== null) return reveal();
+      app.querySelectorAll(".opt").forEach((b) => (b.onclick = () => { answers[i] = +b.dataset.j; if (S.instant) return reveal(); app.querySelectorAll(".opt").forEach((x) => x.classList.toggle("sel", x === b)); $("e-idk").classList.remove("on"); $("nx").disabled = false; buzz(8); }));
+      $("e-idk").onclick = () => { answers[i] = -1; if (S.instant) return reveal(); app.querySelectorAll(".opt").forEach((x) => x.classList.remove("sel")); $("e-idk").classList.add("on"); $("nx").disabled = false; };
       if ($("prev")) $("prev").onclick = () => { i--; show(); };
-      $("nx").onclick = () => { if (i < qs.length - 1) { i++; show(); } else done(); };
+      $("nx").onclick = next;
     };
     const done = async () => {
       clearInterval(timerId);
