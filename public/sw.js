@@ -1,5 +1,5 @@
 // Study Mania service worker: offline app shell + daily reminder notifications.
-const CACHE = "sm-v69";
+const CACHE = "sm-v70";
 const SHELL = ["/", "/index.html", "/styles.css", "/app.js", "/prompt.js", "/shared.mjs", "/local.mjs", "/pet.mjs", "/manifest.webmanifest", "/icons/sm-icon-192.png?v=3", "/logo-light.png", "/logo-dark.png"];
 
 self.addEventListener("install", (e) => {

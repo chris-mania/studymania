@@ -292,8 +292,8 @@ function authView(mode, { upgrade } = {}) {
         if (hadData && (upgrade || mode === "signup")) await importGuest();
         await loadMe();
         if (hadData && mode === "login") return offerImport();
-        if (mode === "signup") return securitySheet(true, () => go(ME.courses.length ? "/" : "/add"));
-        go(ME.courses.length ? "/" : "/add");
+        if (mode === "signup") return securitySheet(true, () => go("/"));
+        go("/");
       } catch (x) { GUEST = wasGuest; er.textContent = x.message; er.hidden = false; btn.disabled = false; }
     };
     if ($("f-user")) wireUsernameCheck($("f-user"), $("f-user-msg"));
@@ -348,7 +348,7 @@ function guestSheet() {
   el.querySelector("#g-go").onclick = async () => {
     GUEST = true; store.set("sm-guest", true);
     try { await navigator.storage?.persist?.(); } catch {}
-    el.remove(); await loadMe(); go(ME.courses.length ? "/" : "/add");
+    el.remove(); await loadMe(); go("/");
   };
 }
 
@@ -600,7 +600,7 @@ route(/^\/$/, () => {
         </div>
         <div class="grow hero-text">
           <div class="h2-streak">${user.streak}-day streak</div>
-          <p class="h2-goal ${G.done ? "done" : ""}">${user.paused_since ? "🏖️ On break · your streak is saved" : G.done ? `✓ Done for today · ${did} of ${plural(goal, G.unit)}` : `${did} of ${plural(goal, G.unit)} today`}${G.bonus ? ` <span class="pill acc">+${G.bonus} bonus</span>` : ""}</p>
+          <p class="h2-goal ${G.done ? "done" : ""}">${user.paused_since ? "🏖️ On break · your streak is saved" : !courses.length ? "Add a class when you're ready to start" : G.done ? `✓ Done for today · ${did} of ${plural(goal, G.unit)}` : `${did} of ${plural(goal, G.unit)} today`}${G.bonus ? ` <span class="pill acc">+${G.bonus} bonus</span>` : ""}</p>
           ${!lit && !user.paused_since && plannedToday() > 0 ? `<p class="small" style="margin:0;color:var(--flame);font-weight:700">🔥 Do a lesson to keep your streak</p>` : ""}
         <div class="h2-pills"><a class="pill rankpill" href="#/ranks" aria-label="Your rank: ${esc(rankOf(user.xp).name)}">${emblemSVG(rankOf(user.xp), 22)}<span>${esc(rankOf(user.xp).name)}</span></a><span class="pill xp-pill">⚡ ${fmt(user.xp)}</span>${user.freezes ? `<span class="pill" title="Streak freezes: each one covers a missed day">❄️ ${user.freezes}</span>` : ""}</div>
         </div>
@@ -628,7 +628,7 @@ route(/^\/$/, () => {
         <span class="un-title">${esc(nx.title)}</span>
         <span class="un-sub">${esc(nx.sub)}</span>
         <span class="btn primary block un-btn">${nx.k === "review" ? "Start review" : did ? "Keep going" : "Start"}</span>
-      </a>${nx.k === "review" ? `<button class="btn ghost small" id="skip-rev" style="margin-top:-6px">Skip review for today. Go to a lesson instead</button>` : ""}` : !courses.length ? `<a class="upnext" href="#/add"><span class="kicker">Get started</span><span class="un-title">Add your first subject</span><span class="un-sub">Give your notes or slides to any AI with our prompt. Takes about 2 minutes.</span><span class="btn primary block un-btn">Add a subject</span></a>` : ""}
+      </a>${nx.k === "review" ? `<button class="btn ghost small" id="skip-rev" style="margin-top:-6px">Skip review for today. Go to a lesson instead</button>` : ""}` : !courses.length ? `<a class="upnext" href="#/add"><span class="kicker">Whenever you're ready</span><span class="un-title">Add your first class</span><span class="un-sub">Takes about 5 minutes, then it's saved forever. No rush, look around first.</span><span class="btn block un-btn">Add a class</span></a>` : ""}
     ${courses.length ? `<h3 style="margin:2px 0 -4px">Your classes</h3><div class="cgrid">${courses.map((c) => {
       const pct = c.total ? Math.round((c.learned / c.total) * 100) : 0, n = c.exam_date ? daysUntil(c.exam_date) : null;
       const due = reviewSkipped(c.id) ? 0 : c.due || 0, left = c.plan.todayLeft || 0, doneToday = c.plan.perDay && !left && c.plan.todayDone;
