@@ -251,7 +251,8 @@ function authView(mode, { upgrade } = {}) {
       <div class="tabs" role="group" aria-label="Account">
         <button type="button" id="t-up" aria-pressed="${mode === "signup"}">Create account</button>
         <button type="button" id="t-in" aria-pressed="${mode === "login"}">Sign in</button>
-      </div>`}
+      </div>
+      <button type="button" class="guest-under" id="guest">or try without an account ›</button>`}
       ${mode === "signup" ? `
       <label class="field">Username<input id="f-user" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="studyking22" maxlength="20">
         <span class="small" id="f-user-msg" style="font-weight:400;color:var(--muted)">Shows on the leaderboard. You can sign in with it too.</span></label>
@@ -262,7 +263,6 @@ function authView(mode, { upgrade } = {}) {
         ${mode === "signup" ? `<span class="muted small" style="font-weight:400">At least 8 characters.</span>` : ""}</label>
       <p class="err" id="f-err" hidden></p>
       <button class="btn primary block" id="f-go">${mode === "signup" ? (upgrade ? "Create account" : "Create account · it's free") : "Sign in"}</button>
-      ${upgrade ? "" : `<button type="button" class="guest-under" id="guest">Try without an account ›</button>`}
       ${upgrade ? "" : `<p class="muted small" style="margin:0;text-align:center">📲 Best on your phone. Add it to your home screen after. <a href="#" id="w-how" style="font-weight:700">How?</a></p>`}
       ${mode === "login" ? `<a class="btn ghost" href="#/forgot">Forgot password?</a>` : ""}
       ${SAVE_NOTE_ACCOUNT}
