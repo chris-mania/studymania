@@ -793,14 +793,21 @@ async function petGrowDay() {
 
 // The pet in the corner during questions: a tiny idle wiggle, a hop when you're right, a "yikes" when you're wrong.
 // It never covers the question and never makes you wait.
+// On a question it stands on top of the first answer (the question gets room so it's never covered);
+// on other screens it sits small in the top bar.
+const petSize = (s) => (s && s.classList.contains("onq") ? (s.classList.contains("young") ? 132 : 104) : 44);
 new MutationObserver(() => {
-  const top = app.querySelector(".sesstop"), p = myPet();
-  if (!top || top.querySelector(".sesspet") || !p || petMode() !== "on") return;
-  const s = document.createElement("span"); s.className = "sesspet"; s.setAttribute("aria-hidden", "true");
+  const p = myPet();
+  if (!p || petMode() !== "on" || app.querySelector(".sesspet")) return;
+  const opts = app.querySelector(".sess .opts"), top = app.querySelector(".sesstop");
+  const host = opts || top; if (!host) return;
+  const young = ["egg", "baby", "kid"].includes(stageOf(p.days).id);
+  const s = document.createElement("span"); s.className = "sesspet" + (opts ? " onq" : "") + (opts && young ? " young" : ""); s.setAttribute("aria-hidden", "true");
   const live = REACT && Date.now() < REACT.until; // a reaction still playing when the screen redraws
-  s.innerHTML = petSVG(p, { size: 44, mood: live ? REACT.mood : "idle" });
+  s.innerHTML = petSVG(p, { size: petSize(s), mood: live ? REACT.mood : "idle" });
   s.classList.toggle("big", !!(live && REACT.big));
-  top.appendChild(s);
+  // Young pets are drawn smaller inside their box, so they need less room above the answers.
+  if (opts) { opts.classList.add("haspet", young ? "pet-sm" : "pet-lg"); opts.prepend(s); } else top.appendChild(s);
 }).observe(app, { childList: true, subtree: true });
 let reactT = 0, REACT = null;
 function petReact(kind) { // good | bad | streak
@@ -809,12 +816,12 @@ function petReact(kind) { // good | bad | streak
   REACT = { mood: kind === "bad" ? "yikes" : "happy", big: kind === "streak", until: Date.now() + ms };
   const s = app.querySelector(".sesspet");
   if (s) {
-    s.innerHTML = petSVG(p, { size: 44, mood: REACT.mood }); s.classList.toggle("big", REACT.big);
+    s.innerHTML = petSVG(p, { size: petSize(s), mood: REACT.mood }); s.classList.toggle("big", REACT.big);
     // An egg can't make faces, so it hops (right) or wobbles (wrong).
     s.classList.remove("egg-hop", "egg-no"); void s.offsetWidth; if (stageOf(p.days).id === "egg") s.classList.add(kind === "bad" ? "egg-no" : "egg-hop");
   }
   clearTimeout(reactT);
-  reactT = setTimeout(() => { REACT = null; const t = app.querySelector(".sesspet"); if (t && myPet()) { t.innerHTML = petSVG(myPet(), { size: 44 }); t.classList.remove("big"); } }, ms);
+  reactT = setTimeout(() => { REACT = null; const t = app.querySelector(".sesspet"); if (t && myPet()) { t.innerHTML = petSVG(myPet(), { size: petSize(t) }); t.classList.remove("big"); } }, ms);
 }
 // Game XP: a quarter of your score, at most 50 a game and 150 a day from games.
 function gameXp(score) {
@@ -829,7 +836,7 @@ function petSpot(G) {
   const sign = exams.length ? `<div class="psign" aria-label="Upcoming exams"><div class="ps-board">${exams.map((c) => { const n = daysUntil(c.exam_date); return `<div><span>${esc(shortName(c.name))}</span><b class="${n <= 2 ? "hot" : ""}">${n === 0 ? "today!" : n === 1 ? "tmrw" : n + "d"}</b></div>`; }).join("")}</div><i class="ps-post"></i></div>` : "";
   const st = stageOf(p.days), awake = G.done || st.id === "egg";
   return `<a class="petspot" href="#/locker" aria-label="${petName(p)}. Open the locker room">
-    <div class="ps-pet">${petSVG(p, { size: 64, mood: awake ? "idle" : "sleep" })}</div>
+    <div class="ps-pet">${petSVG(p, { size: 120, mood: awake ? "idle" : "sleep" })}</div>
     <div class="ps-info"><b>${petName(p)}</b><span>${st.id === "egg" ? `Egg · hatches in ${plural(Math.max(1, 3 - p.days), "day")}` : stageLine(p)}</span>
       <span class="ps-mood">${G.done ? "Happy you studied ✓" : st.id === "egg" ? "Study today to help it hatch" : "Napping until you study 💤"}</span></div>
     ${sign}</a>`;
@@ -1957,10 +1964,10 @@ function celebrate(before, { xp, accuracy, best, text, title, after }) {
   const head = goalHit ? "Daily goal complete!" : streakUp ? `${ME.user.streak}-day streak!` : title;
   const extra = before.used_freeze ? `<div class="notice">❄️ A streak freeze covered the day you missed. Your streak is safe.</div>` : before.earned_freeze ? `<div class="notice ok">❄️ <b style="display:inline">You earned a streak freeze!</b> It'll save your streak if you ever miss a day.</div>` : "";
   const due = ME.courses.reduce((a, c) => a + (reviewSkipped(c.id) ? 0 : c.due), 0), reviewed = (ME.today.reviews || 0) > 0;
-  // After a lesson, if words are due, reviewing is the big next step.
-  // Stay in the same class: only offer a review of the class you just studied.
+  // Lessons left today come first: the big button takes you to the next one (often another class).
+  // Only once today's goal is done do we offer a review of the class you just studied, as a bonus.
   const curC = ME.courses.find((c) => c.id === curClass());
-  const revC = after === "learn" && curC && curC.due > 0 && !reviewSkipped(curC.id) ? curC : null;
+  const revC = after === "learn" && G.done && curC && curC.due > 0 && !reviewSkipped(curC.id) ? curC : null;
   const nn = upNext();
   app.innerHTML = `<div class="sess"><div class="cele">
     ${myPet() && petMode() !== "off" ? `<div class="cele-pet">${petSVG(myPet(), { size: 124, mood: "happy" })}</div>` : `<div class="big-emoji">${emoji}</div>`}<h1>${head}</h1>
