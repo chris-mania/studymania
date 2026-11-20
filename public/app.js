@@ -799,7 +799,7 @@ const petSize = (s) => (s && s.classList.contains("onq") ? (s.classList.contains
 new MutationObserver(() => {
   const p = myPet();
   if (!p || petMode() !== "on" || app.querySelector(".sesspet")) return;
-  const opts = app.querySelector(".sess .opts"), top = app.querySelector(".sesstop");
+  const opts = app.querySelector(".sess .qbody .prompt + .opts") && app.querySelector(".sess .qbody .prompt"), top = app.querySelector(".sesstop");
   const host = opts || top; if (!host) return;
   const young = ["egg", "baby", "kid"].includes(stageOf(p.days).id);
   const s = document.createElement("span"); s.className = "sesspet" + (opts ? " onq" : "") + (opts && young ? " young" : ""); s.setAttribute("aria-hidden", "true");

@@ -760,3 +760,10 @@ details summary{list-style:revert}
 .opts.haspet.pet-lg{margin-top:98px}
 .sesspet.onq.young{width:132px;height:132px;top:-127px;right:-6px}
 .opts.haspet.pet-sm{margin-top:72px}
+/* The Maniac stands beside the question, feet on the first answer: the question wraps to its left (no empty gap). */
+.opts.haspet.pet-sm,.opts.haspet.pet-lg{margin-top:0}
+.prompt.haspet{position:relative;padding-right:104px}
+.prompt.haspet.pet-sm{min-height:78px}
+.prompt.haspet.pet-lg{min-height:96px}
+.prompt .sesspet.onq{top:auto;bottom:-20px;right:-8px}
+.prompt .sesspet.onq.young{bottom:-26px;right:-18px}
