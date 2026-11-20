@@ -767,3 +767,6 @@ details summary{list-style:revert}
 .prompt.haspet.pet-lg{min-height:96px}
 .prompt .sesspet.onq{top:auto;bottom:-20px;right:-8px}
 .prompt .sesspet.onq.young{bottom:-26px;right:-18px}
+/* shadow sits right on the first answer's top edge */
+.prompt .sesspet.onq{bottom:-19px}
+.prompt .sesspet.onq.young{bottom:-20px}
