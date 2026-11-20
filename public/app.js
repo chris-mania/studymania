@@ -1599,8 +1599,28 @@ function safeTraps(d, k) {
   if (traps.length < 3) traps = traps.concat(siblings(d, k, 3 - traps.length, answerIsName ? "term" : "answer").filter((t) => norm(t) !== norm(k.answer) && !traps.includes(t)));
   return traps;
 }
+// Older AI cards often made the right answer the longest one, so you could guess by length.
+// If the right answer is clearly longer than the wrong ones, swap the shortest wrong ones for other
+// learned words' meanings that are about as long (always keeping at least one made-for-this-word trap).
+function evenLengths(d, k, traps) {
+  const words = (t) => String(t || "").trim().split(/\s+/).filter(Boolean).length;
+  const a = words(k.answer);
+  if (a < 6 || !traps.length || a <= Math.max(...traps.map(words)) * 1.25) return traps;
+  const norm = (t) => String(t || "").trim().toLowerCase();
+  const taken = new Set([k.answer, ...traps].map(norm));
+  const pool = siblings(d, k, 12, "answer").filter((t) => !taken.has(norm(t)) && Math.abs(words(t) - a) <= Math.max(2, a * 0.3))
+    .sort((x, y) => Math.abs(words(x) - a) - Math.abs(words(y) - a));
+  const out = [...traps].sort((x, y) => words(y) - words(x)); // longest crafted trap first: it stays
+  for (let i = out.length - 1; i >= 1 && pool.length; i--) {
+    if (words(out[i]) * 1.25 < a) out[i] = pool.shift();
+  }
+  return out;
+}
 function meaningQ(d, k) {
-  return { k, topic: k.topic, html: k.question ? esc(k.question) : `What does <b>${esc(k.term)}</b> mean?${k.full ? `<span class="sub">${esc(k.full)}</span>` : ""}`, opts: shuffle([k.answer, ...safeTraps(d, k)]), ans: k.answer };
+  const traps = safeTraps(d, k);
+  const isName = (t) => d.cards.some((x) => x.term && x.term.toLowerCase() === String(t).toLowerCase());
+  const opts = isName(k.answer) ? traps : evenLengths(d, k, traps);
+  return { k, topic: k.topic, html: k.question ? esc(k.question) : `What does <b>${esc(k.term)}</b> mean?${k.full ? `<span class="sub">${esc(k.full)}</span>` : ""}`, opts: shuffle([k.answer, ...opts]), ans: k.answer };
 }
 // "Sally does ___. What is this an example of?" Uses the card's fresh scenario (or its example), with the word's name hidden.
 const hasExample = (k) => !isPair(k) && !!(k.scenario || k.example) && !k.formula;
