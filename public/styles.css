@@ -770,3 +770,5 @@ details summary{list-style:revert}
 /* shadow sits right on the first answer's top edge */
 .prompt .sesspet.onq{bottom:-19px}
 .prompt .sesspet.onq.young{bottom:-20px}
+/* let the question run right up to the Maniac (no balanced short lines) */
+.prompt.haspet{padding-right:90px;text-wrap:wrap}
