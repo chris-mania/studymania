@@ -741,7 +741,7 @@ async function evolveOverlay(before, after) {
   confetti(1.6); chime("win"); buzz([30, 80, 30]);
   el.querySelector(".evo-k").textContent = hatch ? "It hatched!" : "It grew up!";
   el.querySelector(".evo-h").textContent = hatch ? `It's a ${SPECIES_NAME[p.species]}!` : `${p.name || "Your Maniac"} is now a ${stageOf(p.days).name}!`;
-  el.querySelector(".evo-p").textContent = hatch ? "It grows a little every day you finish your lessons." : next ? `Next: ${next.name} after ${plural(next.min, "study day")}.` : "The wisest Maniac there is. The wizard hat is unlocked.";
+  el.querySelector(".evo-p").textContent = hatch ? "It grows a little every day you study: lessons, reviews, cram, exams or games." : next ? `Next: ${next.name} after ${plural(next.min, "study day")}.` : "The wisest Maniac there is. The wizard hat is unlocked.";
   el.querySelector(".ov-ok").style.visibility = "visible";
   await waitClose(el);
   if (hatch && !p.name) nameSheet();
@@ -753,7 +753,7 @@ async function crackOverlay(days) {
   const left = Math.max(1, 3 - days);
   const el = overlay(`<div class="evo-stage crack"><div class="evo-old">${petSVG(p, { days: days - 1, size: 170 })}</div><div class="evo-new">${petSVG(p, { days, size: 170 })}</div></div>
     <div class="kicker">Crack!</div><h1 class="ov-h">${p.name ? esc(p.name) + "'s egg" : "Your egg"} is cracking</h1>
-    <p class="muted">${left === 1 ? "Finish your lessons tomorrow and it hatches!" : `${plural(left, "more study day")} until it hatches.`}</p>
+    <p class="muted">${left === 1 ? "Study anything tomorrow and it hatches!" : `${plural(left, "more study day")} until it hatches.`}</p>
     <button class="btn primary block ov-ok">Can't wait</button>`, "crackov");
   const st = el.querySelector(".evo-stage");
   await sleepMs(350); st.classList.add("shake"); buzz([15, 60, 15]);
@@ -844,7 +844,7 @@ function petSpot(G) {
 function eggCard() {
   if (myPet() || store.get("sm-egg-hidden", false)) return "";
   return `<section class="card eggcard"><div class="ec-egg">${petSVG({ ...SAMPLE_PET, days: 0 }, { stage: "egg", size: 76 })}</div>
-    <div class="grow stack" style="gap:6px"><b>Claim your free Maniac egg</b><span class="muted small">A little study buddy. It hatches and grows every day you finish your lessons. Comes with 1,000 points for the shop.</span>
+    <div class="grow stack" style="gap:6px"><b>Claim your free Maniac egg</b><span class="muted small">A little study buddy. It hatches and grows every day you study anything. Comes with 1,000 points for the shop.</span>
     <div class="row" style="gap:8px"><button class="btn primary sm" id="egg-claim">Claim it</button><button class="btn ghost sm" id="egg-hide">Not now</button></div></div></section>`;
 }
 function wireEgg() {
@@ -1954,6 +1954,8 @@ async function saveRound(body) {
     toast("Saved on this phone. It'll sync when you're back online.");
   }
   try { await loadMe(); } catch {}
+  // Your Maniac grows on any day you study: a lesson, review, cram, practice exam or a game all count (once a day).
+  if ((saved || GUEST) && (body.xp > 0 || body.counts !== false)) petGrowDay();
   const r0 = rankOf(xp0), r1 = rankOf(ME.user.xp);
   if (r1.idx > r0.idx) queueOverlay(() => sleepMs(1400).then(() => rankOverlay(r1, { newTier: r1.tier > r0.tier })));
   return { ...before, used_freeze: saved?.used_freeze || 0, earned_freeze: !!saved?.earned_freeze };
@@ -1984,7 +1986,6 @@ function celebrate(before, { xp, accuracy, best, text, title, after }) {
     <button class="btn ${revC ? "" : "primary"} block" id="more">${G.done ? "Do a bonus round" : `Next ${G.unit} (${G.goal - G.did} to go)`}${nn && !G.done ? `<span class="btn-sub">${esc(nn.c.name)}${nn.k === "next" && nn.c.next ? ` · Lesson ${nn.c.next.n}` : ""}</span>` : ""}</button><a class="btn ghost block" href="#/">Done for now</a></div></div>`;
   countUp($("xpn"), xp); chime("win"); buzz([20, 60, 20, 60, 40]); confetti(goalHit || streakUp ? 1.6 : 0.8);
   $("more").onclick = () => startBest();
-  if (goalHit) petGrowDay();
   if (revC) $("go-rev").onclick = () => go(`/s/${revC.id}/review`);
 }
 
