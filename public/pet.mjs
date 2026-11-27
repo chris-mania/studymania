@@ -31,14 +31,14 @@ export const ITEMS = [
   ["buzz", "hair", "Buzz cut", 600], ["afro", "hair", "Afro", 600], ["long", "hair", "Long & straight", 600], ["ponytail", "hair", "Ponytail", 600],
   ["buns", "hair", "Space buns", 600], ["mohawk", "hair", "Mohawk", 600], ["swoop", "hair", "Side swoop", 600], ["braids", "hair", "Braids", 600],
   ["bowl", "hair", "Bowl cut", 600], ["bedhead", "hair", "Bedhead", 600], ["topknot", "hair", "Top knot", 600], ["wavy", "hair", "Wavy", 600],
-  ["sprout", "hair", "Sprout curl", 600], ["curls", "hair", "Short curls", 600], ["zap", "hair", "Power spikes", 9001],
+  ["sprout", "hair", "Sprout curl", 600], ["curls", "hair", "Short curls", 600], ["zap", "hair", "Power spikes", 1000],
   // tops
   ["tee", "top", "Plain tee", 400], ["stripes", "top", "Striped tee", 400], ["tank", "top", "Tank top", 400], ["jersey", "top", "Sports jersey", 1000],
   ["hoodie", "top", "Hoodie", 1000], ["jean", "top", "Jean jacket", 1200], ["sweater", "top", "Heart sweater", 800], ["shirttie", "top", "Shirt & tie", 1000],
   ["dress", "top", "Dress", 1000], ["overalls", "top", "Overalls", 800], ["varsity", "top", "Varsity jacket", 1500], ["puffer", "top", "Puffer", 1200],
   ["labcoat", "top", "Lab coat", 1000], ["tux", "top", "Tux", 5000], ["raincoat", "top", "Raincoat", 800], ["flannel", "top", "Flannel", 800],
   // fighter gear (for Boss Battle)
-  ["gi", "top", "Fighter gi", 1500], ["armor", "top", "Battle plates", 2500],
+  ["gi", "top", "Fighter gi", 800], ["armor", "top", "Battle plates", 1200],
   // rank jackets: one per rank tier, free (and only shown) once you reach it
   ...["Wood", "Bronze", "Silver", "Gold", "Platinum", "Emerald", "Sapphire", "Amethyst", "Diamond", "Ruby", "Obsidian", "Champion", "Study Maniac"]
     .map((n, t) => ["j-" + t, "top", n + " jacket", 0, { rank: t }]),
@@ -100,6 +100,13 @@ export function owns(pet, xp, id) {
   return (pet.owned || []).includes(id);
 }
 // Clean up a pet object that came from storage.
+// Tops you can recolor in the locker room: two parts each, picked from a set palette.
+export const TINTABLE = {
+  gi: { a: ["Gi", "#d8432f"], b: ["Belt & undershirt", "#23252e"] },
+  armor: { a: ["Plates", "#c9d3e3"], b: ["Suit underneath", "#5b6b86"] },
+};
+export const TINT_COLORS = ["#d8432f", "#ff8a1f", "#f2c94c", "#2bb673", "#1f8a5c", "#45d0c6", "#4b98f7", "#2c3e75", "#8d5bd6", "#ff7eb6", "#f4f6fa", "#c9d3e3", "#5b6b86", "#23252e"];
+const tintOf = (p, id) => { const d = TINTABLE[id]; if (!d) return null; const t = p?.tints?.[id] || {}; return { a: TINT_COLORS.includes(t.a) ? t.a : d.a[1], b: TINT_COLORS.includes(t.b) ? t.b : d.b[1] }; };
 export function cleanPet(p) {
   if (!p || typeof p !== "object" || !p.claimed) return null;
   const okId = (id, slot) => (item(id)?.slot === slot ? id : null);
@@ -109,6 +116,7 @@ export function cleanPet(p) {
     hair: okId(p.hair, "hair") || "spiky", color: HAIR_COLORS.some((h) => h[0] === p.color) ? p.color : "black", days: Math.max(0, Math.min(5000, parseInt(p.days, 10) || 0)),
     lastGrow: p.lastGrow ? String(p.lastGrow).slice(0, 10) : null, owned: [...new Set((Array.isArray(p.owned) ? p.owned : []).filter((id) => item(id)))].slice(0, 200),
     wear: { top: okId(p.wear?.top, "top"), glasses: okId(p.wear?.glasses, "glasses"), hat: okId(p.wear?.hat, "hat") },
+    tints: Object.fromEntries(Object.keys(TINTABLE).filter((k) => p.tints?.[k]).map((k) => [k, tintOf(p, k)])),
   };
 }
 
@@ -124,6 +132,12 @@ export function petEdit(pet, b, xp) {
     if (id === null) pet.wear[slot] = null;
     else if (item(id)?.slot === slot && owns(pet, xp, id)) pet.wear[slot] = id;
     else return { error: "You don't own that yet." };
+  }
+  if (b.tint && typeof b.tint === "object") {
+    const { id, a, b: bb } = b.tint;
+    if (!TINTABLE[id] || !owns(pet, xp, id)) return { error: "You don't own that yet." };
+    if (!TINT_COLORS.includes(a) || !TINT_COLORS.includes(bb)) return { error: "Pick a color from the list." };
+    pet.tints = { ...(pet.tints || {}), [id]: { a, b: bb } };
   }
   return {};
 }
@@ -206,7 +220,7 @@ function hairParts(id, c, sp) {
   }
 }
 // Tops: drawn for a neckline at y=88 and squashed down to each body's neckline so the face is never covered.
-function topSVG(id, gid) {
+function topSVG(id, gid, tint) {
   const S = (fill) => `<path d="M25 88 Q60 96 95 88 C92 102 78 110 60 110 C42 110 28 102 25 88 Z" fill="${fill}"/>`;
   const shine = (c1, c2) => `<defs><linearGradient id="g${gid}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${c1}"/><stop offset=".5" stop-color="#fff"/><stop offset="1" stop-color="${c2}"/></linearGradient></defs>`;
   // Rank jackets: shiny metal bomber. Open V front over a dark shirt, popped collar, sleeves, gold zipper, star patch, light sweep + twinkles.
@@ -244,8 +258,10 @@ function topSVG(id, gid) {
     case "labcoat": return S("#f4f6fa") + `<path d="M52 92 L60 106 L68 92 Z" fill="#4b98f7"/><path d="M46 88 L56 94 L52 104 Z M74 88 L64 94 L68 104 Z" fill="#dfe3ea"/><rect x="74" y="98" width="10" height="7" rx="1" fill="#dfe3ea"/>`;
     case "tux": return S("#23252e") + `<path d="M50 92 L60 110 L70 92 Q60 96 50 92 Z" fill="#fff"/><path d="M52 92 L60 96 L52 100 Z M68 92 L60 96 L68 100 Z" fill="${INK}"/>`;
     case "raincoat": return `<path d="M24 87 Q60 95 96 87 C94 104 80 112 60 112 C40 112 26 104 24 87 Z" fill="#f2c94c"/><path d="M60 92 L60 112" stroke="#d9a925" stroke-width="2.5"/>`;
-    case "gi": return S("#d8432f") + `<path d="M44 87 L60 104 L76 87" fill="none" stroke="#f4ead7" stroke-width="4"/><path d="M50 88 L60 99 L70 88" fill="#23252e"/><path d="M27 101 Q60 109 93 101 L93 106 Q60 114 27 106 Z" fill="#23252e"/><path d="M64 106 L70 114 M66 106 L60 114" stroke="#23252e" stroke-width="3" stroke-linecap="round"/>`;
-    case "armor": return S("#5b6b86") + `<path d="M40 90 Q60 98 80 90 L78 106 Q60 112 42 106 Z" fill="#c9d3e3" stroke="#3b465a" stroke-width="2"/><path d="M60 92 L60 108" stroke="#3b465a" stroke-width="1.5"/><path d="M20 86 Q24 78 36 82 L40 92 Q28 96 20 86 Z M100 86 Q96 78 84 82 L80 92 Q92 96 100 86 Z" fill="#8fd0ff" stroke="#3b465a" stroke-width="2"/>`;
+    case "gi": { const a = tint?.a || "#d8432f", b = tint?.b || "#23252e";
+      return S(a) + `<path d="M44 87 L60 104 L76 87" fill="none" stroke="${shade(a, 1.35)}" stroke-width="4"/><path d="M50 88 L60 99 L70 88" fill="${b}"/><path d="M27 101 Q60 109 93 101 L93 106 Q60 114 27 106 Z" fill="${b}"/><path d="M64 106 L70 114 M66 106 L60 114" stroke="${b}" stroke-width="3" stroke-linecap="round"/>`; }
+    case "armor": { const a = tint?.a || "#c9d3e3", b = tint?.b || "#5b6b86", dk = shade(a, 0.45);
+      return S(b) + `<path d="M40 90 Q60 98 80 90 L78 106 Q60 112 42 106 Z" fill="${a}" stroke="${dk}" stroke-width="2"/><path d="M60 92 L60 108" stroke="${dk}" stroke-width="1.5"/><path d="M20 86 Q24 78 36 82 L40 92 Q28 96 20 86 Z M100 86 Q96 78 84 82 L80 92 Q92 96 100 86 Z" fill="${shade(a, 0.85)}" stroke="${dk}" stroke-width="2"/>`; }
     case "flannel": return S("#c0392b") + `<path d="M38 92 L38 106 M50 94 L50 110 M70 94 L70 110 M82 92 L82 106 M28 98 Q60 106 92 98 M34 105 Q60 112 86 105" fill="none" stroke="#7a1f16" stroke-width="2.5"/>`;
     case "turkey": return S("#a0522d") + `<g transform="translate(60 102)"><path d="M-9 0 Q-12 -10 -4 -10 M9 0 Q12 -10 4 -10 M0 -2 Q0 -14 0 -12" stroke="#e2543e" stroke-width="4" stroke-linecap="round" fill="none"/><circle r="5" fill="#6b3a1f"/><circle cx="1.5" cy="-1" r="1" fill="#fff"/></g>`;
     case "ugly": return S("#2e8b57") + `<path d="M27 92 L35 98 L43 92 L51 98 L59 92 L67 98 L75 92 L83 98 L93 92" fill="none" stroke="#fff" stroke-width="2.5"/><circle cx="40" cy="104" r="2.5" fill="#e2543e"/><circle cx="60" cy="106" r="2.5" fill="#f2c94c"/><circle cx="80" cy="104" r="2.5" fill="#e2543e"/>`;
@@ -317,7 +333,9 @@ export function petSVG(p, opts = {}) {
   const dy = g.top - 42, mv = (s) => (s && dy ? `<g transform="translate(0 ${dy})">${s}</g>` : s || "");
   const eyeDy = g.eyeY - 64;
   const glassesId = wear.glasses || (elder ? "elder" : null);
-  const top = wear.top ? topSVG(wear.top, id) : "";
+  // Puff is wider and lumpier than the others, so its tops are drawn a bit wider and taller to cover it.
+  const topRaw = wear.top ? topSVG(wear.top, id, tintOf(p, wear.top)) : "";
+  const top = topRaw && sp === "puff" ? `<g transform="translate(60 112) scale(1.3 1.08) translate(-60 -112)">${topRaw}</g>` : topRaw;
   const elderBits = elder ? `<path d="M${g.ex[0] - 13} ${g.eyeY - 12} Q${g.ex[0]} ${g.eyeY - 20} ${g.ex[0] + 11} ${g.eyeY - 10}" fill="none" stroke="#e3e7ee" stroke-width="5" stroke-linecap="round"/><path d="M${g.ex[1] - 11} ${g.eyeY - 10} Q${g.ex[1]} ${g.eyeY - 20} ${g.ex[1] + 13} ${g.eyeY - 12}" fill="none" stroke="#e3e7ee" stroke-width="5" stroke-linecap="round"/>${mood === "idle" ? `<path d="M45 ${g.mouthY + 3} Q52 ${g.mouthY - 5} 60 ${g.mouthY + 1} Q68 ${g.mouthY - 5} 75 ${g.mouthY + 3} Q68 ${g.mouthY + 9} 60 ${g.mouthY + 5} Q52 ${g.mouthY + 9} 45 ${g.mouthY + 3} Z" fill="#e3e7ee"/>` : ""}` : "";
   const blank = !!opts.faceless; // the grey stand-in in the shop: no face at all
   const cheeks = blank || mood === "sleep" || sp === "sticker" ? "" : `<ellipse cx="${g.ex[0] - 12}" cy="${g.cheekY}" rx="6" ry="3.5" fill="#ff7eb6" opacity=".45"/><ellipse cx="${g.ex[1] + 12}" cy="${g.cheekY}" rx="6" ry="3.5" fill="#ff7eb6" opacity=".45"/>`;

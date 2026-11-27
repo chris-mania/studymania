@@ -944,3 +944,65 @@ details summary{list-style:revert}
 @keyframes burst{0%{transform:scale(.3)}60%{transform:scale(1.6)}100%{transform:scale(1.9);opacity:0}}
 .bpop.pup{top:58%;left:26%;font-size:22px;color:#ffd700;-webkit-text-stroke:1.5px #14161c}
 .bpop.pup{left:42%}
+.swatches{display:flex;flex-wrap:wrap;gap:8px}
+.sw{width:40px;height:40px;border-radius:50%;background:var(--c);border:2px solid var(--line);cursor:pointer;padding:0}
+.sw[aria-pressed="true"]{outline:3px solid var(--accent);outline-offset:2px}
+
+/* Boss Battle: characters stand ON the floor line (the floor no longer draws over them) */
+.barena{height:230px;isolation:isolate}
+.barena::after{z-index:0;height:30px}
+.bme,.bfoe{bottom:24px}
+.baura{bottom:20px;z-index:1}
+.bme{z-index:3}.bfoe{z-index:2}
+/* stages */
+.bstage{position:absolute;inset:0;z-index:0;pointer-events:none}
+.bstage i{position:absolute;display:block}
+.bstagename{position:absolute;left:10px;top:8px;z-index:4;font:italic 800 11px "Barlow",var(--display);letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.75);text-shadow:0 1px 2px #000}
+.stage-city{background:linear-gradient(#ff8a5c 0%,#f25c7a 38%,#5b2a6e 72%,#241433 100%)}
+.stage-city .bstage i:nth-child(1){left:0;right:0;bottom:30px;height:70px;background:linear-gradient(90deg,#1b1030 0 9%,transparent 9% 11%,#1b1030 11% 22%,transparent 22% 24%,#1b1030 24% 30%,transparent 30% 33%,#1b1030 33% 46%,transparent 46% 48%,#1b1030 48% 57%,transparent 57% 60%,#1b1030 60% 74%,transparent 74% 76%,#1b1030 76% 88%,transparent 88% 90%,#1b1030 90% 100%);clip-path:polygon(0 30%,9% 30%,9% 0,22% 0,22% 45%,30% 45%,30% 15%,46% 15%,46% 50%,57% 50%,57% 5%,74% 5%,74% 35%,88% 35%,88% 20%,100% 20%,100% 100%,0 100%)}
+.stage-city .bstage i:nth-child(2){left:44%;top:24px;width:46px;height:46px;border-radius:50%;background:#ffd27a;box-shadow:0 0 30px #ffb36b}
+.stage-city::after{background:#2a1838;border-top-color:#ff8a5c}
+.stage-dojo{background:linear-gradient(#5a3b26 0%,#7a5535 55%,#3a2616 100%)}
+.stage-dojo .bstage i:nth-child(1){left:0;right:0;top:0;height:120px;background:repeating-linear-gradient(90deg,#f4e6c8 0 52px,#4a301e 52px 58px);opacity:.9}
+.stage-dojo .bstage i:nth-child(2){left:0;right:0;top:56px;height:5px;background:#4a301e}
+.stage-dojo .bstage i:nth-child(3){left:50%;top:14px;width:70px;margin-left:-35px;height:34px;background:#fff;border:3px solid #4a301e;border-radius:3px}
+.stage-dojo::after{background:repeating-linear-gradient(90deg,#a87a4c 0 40px,#8f6640 40px 42px);border-top-color:#4a301e}
+.stage-library{background:linear-gradient(#141a33,#1f2747)}
+.stage-library .bstage i:nth-child(1),.stage-library .bstage i:nth-child(2){top:10px;width:120px;height:170px;background:repeating-linear-gradient(180deg,transparent 0 34px,#5a3b26 34px 40px),repeating-linear-gradient(90deg,#e2543e 0 9px,#4b98f7 9px 17px,#f2c94c 17px 24px,#2bb673 24px 32px,#8d5bd6 32px 40px,transparent 40px 44px);border:5px solid #5a3b26;opacity:.8}
+.stage-library .bstage i:nth-child(1){left:4px}.stage-library .bstage i:nth-child(2){right:4px}
+.stage-library .bstage i:nth-child(3){left:50%;top:18px;width:40px;height:40px;margin-left:-20px;border-radius:50%;background:#f4f6fa;box-shadow:0 0 24px #cfe1ff}
+.stage-library::after{background:#2a1c14;border-top-color:#5a3b26}
+.stage-volcano{background:linear-gradient(#2a0d0d,#5a1414 50%,#a3290f 100%)}
+.stage-volcano .bstage i:nth-child(1){left:-10%;right:-10%;bottom:30px;height:110px;background:#1a0a0a;clip-path:polygon(0 100%,20% 40%,35% 55%,48% 8%,56% 8%,68% 50%,82% 35%,100% 100%)}
+.stage-volcano .bstage i:nth-child(2){left:50%;bottom:120px;width:20px;margin-left:-10px;height:30px;background:radial-gradient(#ffd27a,#ff5a1f);border-radius:50% 50% 30% 30%;box-shadow:0 0 24px #ff5a1f;animation:lava 1.2s ease-in-out infinite alternate}
+.stage-volcano .bstage i:nth-child(3){left:20%;top:30%;width:4px;height:4px;border-radius:50%;background:#ffb36b;box-shadow:60px 20px 0 #ff8a1f,140px -10px 0 #ffb36b,200px 30px 0 #ff5a1f,250px 5px 0 #ffd27a;animation:ember 2.4s linear infinite}
+@keyframes lava{to{transform:translateY(-6px) scale(1.1)}}
+@keyframes ember{to{transform:translateY(-60px);opacity:0}}
+.stage-volcano::after{background:#2a0b06;border-top-color:#ff5a1f}
+.stage-space{background:radial-gradient(ellipse at 70% 20%,#3a2a7a,#0a0b1f 70%)}
+.stage-space .bstage i:nth-child(1){inset:0;background-image:radial-gradient(#fff 1px,transparent 1.5px),radial-gradient(#cfe1ff 1px,transparent 1.5px);background-size:47px 53px,71px 61px;background-position:0 0,20px 30px;opacity:.8}
+.stage-space .bstage i:nth-child(2){right:16%;top:14px;width:56px;height:56px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#8fd0ff,#2c66b0 60%,#14305e);box-shadow:0 0 24px rgba(127,214,255,.4)}
+.stage-space .bstage i:nth-child(3){left:14%;top:30px;width:90px;height:10px;border-radius:5px;background:#5b6b86;box-shadow:0 14px 0 #3b465a}
+.stage-space::after{background:repeating-linear-gradient(90deg,#3b465a 0 30px,#2c3446 30px 32px);border-top-color:#7fd6ff}
+.stage-roof{background:linear-gradient(#1c2638,#2e3d57)}
+.stage-roof .bstage i:nth-child(1){inset:0;background:repeating-linear-gradient(105deg,transparent 0 14px,rgba(180,210,255,.28) 14px 15px);animation:rain .5s linear infinite}
+.stage-roof .bstage i:nth-child(2){left:0;right:0;bottom:30px;height:60px;background:#111826;clip-path:polygon(0 40%,12% 40%,12% 0,26% 0,26% 55%,40% 55%,40% 20%,60% 20%,60% 60%,76% 60%,76% 10%,90% 10%,90% 45%,100% 45%,100% 100%,0 100%)}
+.stage-roof .bstage i:nth-child(3){left:20%;bottom:60px;width:4px;height:4px;background:#ffe36e;box-shadow:14px 8px 0 #ffe36e,120px -4px 0 #ffe36e,134px 6px 0 #ffe36e,210px 14px 0 #ffe36e,240px 0 0 #ffe36e}
+@keyframes rain{to{background-position:-20px 60px}}
+.stage-roof::after{background:#1a1f2b;border-top-color:#4b98f7}
+/* boss attack styles */
+.bfoe.atk-slam{animation:bAttack .7s cubic-bezier(.3,.9,.3,1)}
+.bfoe.atk-throw{animation:bThrow .6s ease-out}
+@keyframes bThrow{30%{transform:translateX(10px) rotate(8deg)}55%{transform:translateX(-14px) rotate(-10deg)}100%{transform:none}}
+.bfoe.atk-zap{animation:bZap .6s ease-out}
+@keyframes bZap{20%,60%{filter:brightness(1.8) drop-shadow(0 0 12px #f2c94c)}40%{transform:translateY(-6px)}100%{transform:none;filter:none}}
+.bfoe.atk-pound{animation:bPound .7s ease-in}
+@keyframes bPound{35%{transform:translateY(-50px)}55%{transform:translateY(0) scale(1.1,.85)}70%{transform:scale(.95,1.05)}100%{transform:none}}
+.bfoe.atk-spin{animation:bSpin .8s ease-in-out}
+@keyframes bSpin{50%{transform:translateX(-160px) rotate(-360deg)}100%{transform:none}}
+.bfxi.bshot{right:110px;bottom:90px;font:italic 900 26px/1 "Barlow",var(--display);color:#fff;-webkit-text-stroke:1.5px #14161c;animation:shot .6s ease-in forwards}
+@keyframes shot{0%{transform:translateX(0) rotate(0)}100%{transform:translateX(-150px) rotate(-540deg)}}
+.bfxi.bzap{left:70px;top:0;width:30px;height:160px;background:#ffe36e;clip-path:polygon(40% 0,70% 0,52% 40%,80% 40%,30% 100%,44% 54%,20% 54%);filter:drop-shadow(0 0 8px #ffd700);animation:flashFx .45s ease-out forwards}
+.bfxi.bquake{left:0;right:0;bottom:22px;height:12px;background:radial-gradient(ellipse at 80% 50%,rgba(255,255,255,.6),transparent 70%);animation:quake .6s ease-out forwards}
+@keyframes quake{0%{transform:scaleX(.2);transform-origin:80% 50%}100%{transform:scaleX(1.6);opacity:0;transform-origin:80% 50%}}
+.bfxi.borb{bottom:88px}.bfxi.bbeam{bottom:80px}.bfxi.bball{bottom:90px}.bfxi.bburst{bottom:78px}.bfxi.bimpact{bottom:38px}.bfxi.bring{bottom:58px}.bfxi.bshot{bottom:100px}

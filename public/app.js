@@ -1,8 +1,8 @@
 /* Study Mania — app screens */
 import { addDays, daysBetween, niceDate, buildLessons, planFor, lessonsAndPlan, isTricky, pickThrowbacks, secondReminderHour, mergeMissed, mastery, needsRetest, needScore, parseBest, GAME_KINDS } from "./shared.mjs";
 import { localApi, hasGuestData, guestExport, clearGuest } from "./local.mjs";
-import { BOSSES, bossSVG } from "./boss.mjs";
-import { petSVG, emblemSVG, rankOf, allRanks, ITEMS, item, owns, inSeason, stageOf, nextStage, SPECIES_NAME, FREEZE_MAX, TIERS, TOP_XP } from "./pet.mjs";
+import { BOSSES, STAGES, bossSVG } from "./boss.mjs";
+import { TINTABLE, TINT_COLORS, petSVG, emblemSVG, rankOf, allRanks, ITEMS, item, owns, inSeason, stageOf, nextStage, SPECIES_NAME, FREEZE_MAX, TIERS, TOP_XP } from "./pet.mjs";
 
 // ---------- helpers ----------
 const app = document.getElementById("app");
@@ -986,7 +986,7 @@ route(/^\/locker$/, () => {
         <div class="lk-stage"><div class="lk-floor"></div>${petSVG(p, { size: 180 })}</div>
         <div class="lk-name"><h1>${petName(p)}</h1><button class="iconbtn" id="lk-rename" aria-label="Rename">✎</button></div>
         <p class="muted small" style="margin:0">${egg ? `Egg · hatches after ${plural(3, "study day")} (${p.days} so far)` : `${SPECIES_NAME[p.species]} · ${stageLine(p)}`}</p>
-        ${nx ? `<div class="bar" role="img" aria-label="${prog}% to ${nx.name}" style="margin-top:8px"><i style="width:${prog}%"></i></div><p class="muted small" style="margin:4px 0 0">Grows on days you finish all your lessons. ${plural(nx.min - p.days, "more day")} to ${nx.name}.</p>` : ""}
+        ${nx ? `<div class="bar" role="img" aria-label="${prog}% to ${nx.name}" style="margin-top:8px"><i style="width:${prog}%"></i></div><p class="muted small" style="margin:4px 0 0">Grows on days you study. ${plural(nx.min - p.days, "more day")} to ${nx.name}.</p>` : ""}
       </section>
       ${egg ? `<p class="muted">Clothes and hair unlock once it hatches. You can still shop now; it'll wear them when it's out.</p>` : `
       <div class="tabs lk-tabs" role="group" aria-label="What to change">${[["top", "Tops"], ["hat", "Hats"], ["glasses", "Glasses"], ["hair", "Hair"]].map(([k, l]) => `<button type="button" data-tab="${k}" aria-pressed="${tab === k}">${l}</button>`).join("")}</div>
@@ -994,7 +994,10 @@ route(/^\/locker$/, () => {
         ${["top", "glasses", "hat"].includes(tab) ? `<button type="button" class="itile ${!cur ? "wearing" : ""}" data-wear=""><div class="bigicon sm">🚫</div><b>None</b>${!cur ? `<span class="itag on">Wearing</span>` : ""}</button>` : ""}
         ${owned.map((it) => `<button type="button" class="itile ${cur === it.id ? "wearing" : ""}" data-wear="${it.id}">${previewPet(it, 76)}<b>${esc(it.name)}</b>${cur === it.id ? `<span class="itag on">Wearing</span>` : ""}</button>`).join("")}
       </div>
-      ${owned.length ? "" : `<p class="muted small">Nothing here yet.</p>`}`}
+      ${owned.length ? "" : `<p class="muted small">Nothing here yet.</p>`}
+      ${tab === "top" && cur && TINTABLE[cur] ? (() => { const t = { a: p.tints?.[cur]?.a || TINTABLE[cur].a[1], b: p.tints?.[cur]?.b || TINTABLE[cur].b[1] };
+        return `<div class="card stack tintcard" style="gap:10px"><b>🎨 Colors · ${esc(ITEMS.find((x) => x.id === cur)?.name || "")}</b>${["a", "b"].map((part) => `<div class="stack" style="gap:6px"><span class="muted small">${esc(TINTABLE[cur][part][0])}</span>
+          <div class="swatches" role="group" aria-label="${esc(TINTABLE[cur][part][0])} color">${TINT_COLORS.map((c) => `<button type="button" class="sw" data-tint="${part}" data-c="${c}" style="--c:${c}" aria-label="${c}" aria-pressed="${t[part] === c}"></button>`).join("")}</div></div>`).join("")}</div>`; })() : ""}`}
       <a class="btn block" href="#/shop">🛍️ Get more in the shop · 🪙 ${fmt(ME.user.points || 0)}</a>
       <div class="card stack" style="gap:8px"><b>Maniac during lessons</b>
         <div class="seg" role="group" aria-label="Maniac during lessons">${[["on", "In the corner"], ["end", "Only at the end"], ["off", "Off"]].map(([v, l]) => `<button type="button" data-pm="${v}" aria-pressed="${petMode() === v}">${l}</button>`).join("")}</div>
@@ -1003,6 +1006,11 @@ route(/^\/locker$/, () => {
     $("lk-rename").onclick = () => nameSheet(draw);
     app.querySelectorAll("[data-tab]").forEach((b) => (b.onclick = () => { tab = b.dataset.tab; draw(); }));
     app.querySelectorAll("[data-pm]").forEach((b) => (b.onclick = () => { store.set("sm-pet-mode", b.dataset.pm); draw(); }));
+    app.querySelectorAll("[data-tint]").forEach((b) => (b.onclick = async () => {
+      const cur = myPet().wear.top, t = { a: myPet().tints?.[cur]?.a || TINTABLE[cur].a[1], b: myPet().tints?.[cur]?.b || TINTABLE[cur].b[1], [b.dataset.tint]: b.dataset.c };
+      try { await petPost("/pet", { tint: { id: cur, a: t.a, b: t.b } }); } catch (e) { return toast(e.message); }
+      buzz(6); draw();
+    }));
     app.querySelectorAll("[data-wear]").forEach((b) => (b.onclick = async () => {
       const id = b.dataset.wear || null;
       try { await petPost("/pet", tab === "hair" ? { hair: id } : { wear: { [tab]: id } }); } catch (e) { return toast(e.message); }
@@ -2366,14 +2374,15 @@ route(/^\/games\/([\w-]+)$/, async (id) => {
   app.querySelectorAll("[data-gw]").forEach((b) => (b.onclick = () => { store.set(gameWordsKey(id), b.dataset.gw); app.querySelectorAll("[data-gw]").forEach((x) => x.setAttribute("aria-pressed", x === b)); note(); }));
   note();
 });
+let GAME_TOK = null;
 route(/^\/game\/([\w-]+)\/(fall|match|sort|tf|boss)$/, async (id, kind) => {
   setCurClass(id);
   let d;
   try { d = await loadCourse(id); } catch (e) { toast(e.message); return go("/"); }
   const G = { dead: false, missed: [], right: [], raf: 0, to: 0 };
   const stop = () => { G.dead = true; cancelAnimationFrame(G.raf); clearTimeout(G.to); clearInterval(G.tick); if (G.key) document.removeEventListener("keydown", G.key); };
-  const here = location.hash;
-  const alive = () => { if (location.hash !== here) { stop(); return false; } return !G.dead; };
+  const here = location.hash, tok = (GAME_TOK = {}); // a newer game (even of the same kind) retires this one
+  const alive = () => { if (location.hash !== here || GAME_TOK !== tok) { stop(); return false; } return !G.dead; };
   const meta = GAMES.find((g) => g[0] === kind);
   const hud = (right) => `<div class="sess"><div class="ghud"><a class="btn ghost small" href="#/games/${id}" id="gback">‹ Games</a><div class="hud">${right}</div></div>${classTag(d.course)}<div class="kicker">${meta[1]}</div>`;
   const distract = (k, n) => shuffle(d.cards.filter((x) => x.id !== k.id && !isPair(x))).slice(0, n);
@@ -2502,7 +2511,10 @@ route(/^\/game\/([\w-]+)\/(fall|match|sort|tf|boss)$/, async (id, kind) => {
     // Boss Battle: your Maniac vs a random boss. Right = you hit (fast = critical), wrong or time up = it hits you
     // and you see the right answer; that word comes back later. 5 in a row charges a triple-damage Mania Blast.
     // At half health the boss powers up (shorter timer). 3 hearts.
-    const pet = myPet(), boss = BOSSES[Math.floor(Math.random() * BOSSES.length)];
+    // A different random boss and stage every fight (never the same boss twice in a row).
+    const lastB = store.get("sm-boss-last", ""), pool = BOSSES.filter((b) => b.id !== lastB);
+    const pet = myPet(), boss = pool[Math.floor(Math.random() * pool.length)], stage = STAGES[Math.floor(Math.random() * STAGES.length)];
+    store.set("sm-boss-last", boss.id);
     const words = d.cards.filter((k) => !isPair(k)), N = Math.min(12, words.length);
     const queue = gamePick(d, N, words);
     const base = Math.ceil(100 / N);
@@ -2512,7 +2524,7 @@ route(/^\/game\/([\w-]+)\/(fall|match|sort|tf|boss)$/, async (id, kind) => {
       <div class="bbars"><div class="bbar me"><i id="bme" style="width:100%"></i></div><b class="bvs">VS</b><div class="bbar foe"><i id="bfoe" style="width:100%"></i></div></div>
       <div class="bnames"><span>${esc(pet.name || "Your Maniac")}</span><span>${esc(boss.name)}</span></div>
       <div class="bpower"><span>POWER</span><div><i id="bpw" style="width:0%"></i></div><span id="bcombo"></span></div>
-      <div class="barena" id="barena"><div class="bfx" id="bfx"></div>
+      <div class="barena stage-${stage.id}" id="barena"><div class="bstage" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div><span class="bstagename">${esc(stage.name)}</span><div class="bfx" id="bfx"></div>
         <div class="baura" id="baura" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
         <div class="bme" id="bmeP" aria-hidden="true"></div>
         <div class="bfoe" id="bfoeP" style="--bc:${boss.color}">${bossSVG(boss, 132)}</div></div>
@@ -2565,7 +2577,7 @@ route(/^\/game\/([\w-]+)\/(fall|match|sort|tf|boss)$/, async (id, kind) => {
         dmg = Math.round(dmg); G.hp -= dmg; G.score += dmg * 10 + (crit ? 20 : 0);
         G.power = blast ? 0 : Math.min(100, G.power + 20);
         const hitFoe = (delay = 0) => setTimeout(() => { foeP.classList.remove("hit"); void foeP.offsetWidth; foeP.classList.add("hit"); }, delay);
-        const shake = (delay = 0) => setTimeout(() => { const a = $("barena"); a.classList.remove("shake"); void a.offsetWidth; a.classList.add("shake"); }, delay);
+        const shake = (delay = 0) => setTimeout(() => { const a = $("barena"); if (!a || !alive()) return; a.classList.remove("shake"); void a.offsetWidth; a.classList.add("shake"); }, delay);
         let land = 0; // when the damage lands
         if (blast) {
           // Ultimates take turns: an energy wave, a star storm, a meteor slam.
@@ -2589,12 +2601,17 @@ route(/^\/game\/([\w-]+)\/(fall|match|sort|tf|boss)$/, async (id, kind) => {
           G.rage = true; setTimeout(() => { foeP.classList.add("rage"); fxAdd("bring", 0, 900); fxAdd("bring", 250, 900); shake(0); pop("It's powering up!", "rage"); setTimeout(() => pop("This isn't even its final form?!", "rage2"), 700); buzz([40, 40, 40]); }, 700);
         }
         bars();
-        setTimeout(() => { if (G.hp <= 0) win(); else ask(); }, (G.rage && G.hp <= 50 && G.hp + dmg > 50 ? 2300 : 900) + (blast ? 900 : crit ? 300 : 0));
+        setTimeout(() => { if (!alive()) return; if (G.hp <= 0) win(); else ask(); }, (G.rage && G.hp <= 50 && G.hp + dmg > 50 ? 2300 : 900) + (blast ? 900 : crit ? 300 : 0));
       } else {
         G.missed.push(k); queue.splice(Math.min(queue.length, 2 + Math.floor(Math.random() * 3)), 0, k); // comes back soon
         G.combo = 0; G.hearts--; G.power = Math.max(0, G.power - 20); $("baura").classList.remove("on");
-        foeP.classList.remove("attack"); void foeP.offsetWidth; foeP.classList.add("attack");
-        setTimeout(() => { drawMe("yikes", G.hearts <= 0 ? "ko" : "ouch"); pop(i < 0 ? "TOO SLOW!" : "BONK!", "bonk"); $("barena").classList.add("shake"); setTimeout(() => $("barena").classList.remove("shake"), 400); }, 250);
+        // Each boss attacks its own way.
+        const atk = boss.attack;
+        foeP.classList.remove("attack", "atk-slam", "atk-throw", "atk-zap", "atk-pound", "atk-spin"); void foeP.offsetWidth; foeP.classList.add("atk-" + atk);
+        if (atk === "throw") { const e = document.createElement("i"); e.className = "bfxi bshot"; e.textContent = boss.shot || "!"; fx.appendChild(e); setTimeout(() => e.remove(), 700); }
+        if (atk === "zap") fxAdd("bzap", 80, 450);
+        if (atk === "pound") fxAdd("bquake", 150, 600);
+        setTimeout(() => { if (!alive()) return; drawMe("yikes", G.hearts <= 0 ? "ko" : "ouch"); pop(i < 0 ? "TOO SLOW!" : "BONK!", "bonk"); $("barena").classList.add("shake"); setTimeout(() => $("barena")?.classList.remove("shake"), 400); }, 250);
         chime("bad"); buzz([30, 40, 30]); bars();
         const pk = i >= 0 ? opts[i] : null;
         setTimeout(() => {
@@ -2610,11 +2627,11 @@ route(/^\/game\/([\w-]+)\/(fall|match|sort|tf|boss)$/, async (id, kind) => {
     const win = () => {
       clearInterval(G.tick); foeP.classList.add("ko"); pop("K.O.!", "ko"); chime("win"); confetti(1.4);
       G.score += G.hearts * 100 + G.best * 15;
-      setTimeout(() => over(G.score, true, `<div class="bko">K.O.!</div><div class="bres">${esc(pet.name || "Your Maniac")} beat ${esc(boss.name)} · ${plural(G.hearts, "heart")} left · best combo x${G.best}</div>`), 1800);
+      setTimeout(() => alive() && over(G.score, true, `<div class="bko">K.O.!</div><div class="bres">${esc(pet.name || "Your Maniac")} beat ${esc(boss.name)} · ${plural(G.hearts, "heart")} left · best combo x${G.best}</div>`), 1800);
     };
     const lose = () => {
       clearInterval(G.tick);
-      setTimeout(() => over(G.score, true, `<div class="bko lost">DEFEATED</div><div class="bres">${esc(boss.name)} wins this time. Rematch with the words you missed fresh in your head!</div>`), 300);
+      setTimeout(() => alive() && over(G.score, true, `<div class="bko lost">DEFEATED</div><div class="bres">${esc(boss.name)} wins this time. Rematch with the words you missed fresh in your head!</div>`), 300);
     };
   }
 
