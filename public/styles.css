@@ -1009,3 +1009,42 @@ details summary{list-style:revert}
 .coinsline{margin:0;font-weight:700;color:#f2c94c;text-align:center}
 .itile{position:relative}
 .paintbadge{position:absolute;top:8px;right:8px;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-size:15px;background:conic-gradient(#d8432f,#f2c94c,#2bb673,#4b98f7,#8d5bd6,#d8432f);box-shadow:0 0 0 2px var(--surface)}
+
+/* ===== Calm Maniac in lessons: slow, gentle, cute ===== */
+.sesspet .p-fuzz,.sesspet .p-sticker{animation-duration:4s}
+.sesspet .p-jelly{animation-duration:5s}
+.sesspet .p-puff{animation-duration:5.5s}
+.sesspet .p-flick{animation-duration:1.6s}
+.sesspet .p-spark{animation-duration:2.2s}
+.sesspet .pmove .p-jump{animation:pCalmHappy 3.2s ease-in-out infinite} /* happy face without bouncing around */
+@keyframes pCalmHappy{0%,100%{transform:translateY(0) rotate(-2deg)}50%{transform:translateY(-3px) rotate(2deg)}}
+.idle-float{animation:iFloat 5s ease-in-out infinite}
+@keyframes iFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
+.idle-sway{animation:iSway2 6s ease-in-out infinite}
+@keyframes iSway2{0%,100%{transform:rotate(-3deg)}50%{transform:rotate(3deg)}}
+.idle-admire{animation:iAdmire 4s ease-in-out infinite}
+@keyframes iAdmire{0%,100%{transform:translateY(0) rotate(0)}30%{transform:translateY(-2px) rotate(-3deg)}60%{transform:translateY(-2px) rotate(3deg)}}
+.idle-snack{animation:iSnack 3.6s ease-in-out infinite}
+@keyframes iSnack{0%,60%,100%{transform:rotate(0)}70%{transform:rotate(-3deg) translateY(1px)}80%{transform:rotate(0)}}
+.idle-toy{animation:iFloat 6s ease-in-out infinite}
+.idle-dance{animation:iDance2 3.4s ease-in-out infinite}
+@keyframes iDance2{0%,100%{transform:rotate(0) translateY(0)}25%{transform:rotate(-5deg) translateY(-3px)}50%{transform:rotate(0) translateY(0)}75%{transform:rotate(5deg) translateY(-3px)}}
+.idle-look{animation:iLook2 7s ease-in-out infinite}
+@keyframes iLook2{0%,25%,100%{transform:translateX(0) rotate(0)}35%,48%{transform:translateX(-3px) rotate(-5deg)}58%,72%{transform:translateX(3px) rotate(5deg)}82%{transform:none}}
+.idle-think{animation:iThink 5s ease-in-out infinite;transform-origin:50% 100%}
+@keyframes iThink{0%,100%{transform:rotate(0)}40%,70%{transform:rotate(-6deg)}}
+.pprop{position:absolute;display:block;font-style:normal;pointer-events:none}
+.pprop svg{display:block;width:100%;height:auto}
+.pprop.snack{transform-origin:10% 60%;animation:nibble 3.6s ease-in-out infinite}
+@keyframes nibble{0%,55%,100%{transform:translate(0,0) rotate(-10deg)}65%{transform:translate(-6px,-2px) rotate(-20deg)}75%{transform:translate(0,0) rotate(-10deg)}}
+.pprop.duck{left:-6%;bottom:6%;animation:duck 4s ease-in-out infinite}
+@keyframes duck{0%,100%{transform:translateY(0) rotate(-4deg)}50%{transform:translateY(-4px) rotate(4deg)}}
+.pprop.yoyo{right:4%;top:46%;width:12px;height:12px;border-radius:50%;background:radial-gradient(circle,#fff 0 20%,#e2543e 25%);animation:yoyo 3s ease-in-out infinite}
+.pprop.yoyo::before{content:"";position:absolute;left:5px;bottom:12px;width:1.5px;height:22px;background:#c9d3e3;transform-origin:bottom}
+@keyframes yoyo{0%,100%{transform:translateY(0)}50%{transform:translateY(16px) rotate(360deg)}}
+.pprop.think{right:0;top:2%;display:flex;gap:3px;padding:5px 7px;border-radius:12px;background:var(--surface);border:2px solid var(--line)}
+.pprop.think::after{content:"";position:absolute;left:4px;bottom:-9px;width:7px;height:7px;border-radius:50%;background:var(--surface);border:2px solid var(--line)}
+.pprop.think b{width:5px;height:5px;border-radius:50%;background:var(--muted);animation:dots 1.8s ease-in-out infinite}
+.pprop.think b:nth-child(2){animation-delay:.3s}.pprop.think b:nth-child(3){animation-delay:.6s}
+@keyframes dots{0%,100%{opacity:.25}50%{opacity:1}}
+@media (prefers-reduced-motion: reduce){.pprop{animation:none !important}}

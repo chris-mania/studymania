@@ -317,6 +317,12 @@ function eggSVG(days) {
 }
 
 // The whole pet. opts: stage ("egg"|"baby"|...|"elder", default from days), mood ("idle"|"happy"|"yikes"|"sleep"), size (px), anim (bool), adult (force grown look for previews), wear (override)
+// Where the mouth sits inside the 120x120 box (for props like a snack), as percentages.
+export function mouthAt(p, wear = p?.wear) {
+  const st = stageOf(p.days).id, g = GEO[p.species] || GEO.fuzz, lift = wear?.top ? g.neck - 88 : 0;
+  const k = { baby: 0.6, kid: 0.74, teen: 0.88 }[st] || 1, y = 114 - (114 - (g.mouthY - lift)) * k;
+  return { x: 50, y: (y / 120) * 100, k };
+}
 export function petSVG(p, opts = {}) {
   const size = opts.size || 120, anim = opts.anim !== false;
   if (!p) return "";

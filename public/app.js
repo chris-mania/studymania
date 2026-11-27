@@ -2,7 +2,7 @@
 import { addDays, daysBetween, niceDate, buildLessons, planFor, lessonsAndPlan, isTricky, pickThrowbacks, secondReminderHour, mergeMissed, mastery, needsRetest, needScore, parseBest, GAME_KINDS } from "./shared.mjs";
 import { localApi, hasGuestData, guestExport, clearGuest } from "./local.mjs";
 import { BOSSES, STAGES, bossSVG } from "./boss.mjs";
-import { TINTABLE, TINT_COLORS, petSVG, emblemSVG, rankOf, allRanks, ITEMS, item, owns, inSeason, stageOf, nextStage, SPECIES_NAME, FREEZE_MAX, TIERS, TOP_XP } from "./pet.mjs";
+import { TINTABLE, TINT_COLORS, mouthAt, petSVG, emblemSVG, rankOf, allRanks, ITEMS, item, owns, inSeason, stageOf, nextStage, SPECIES_NAME, FREEZE_MAX, TIERS, TOP_XP } from "./pet.mjs";
 
 // ---------- helpers ----------
 const app = document.getElementById("app");
@@ -798,12 +798,21 @@ async function petGrowDay() {
 // on other screens it sits small in the top bar.
 const petSize = (s) => (s && (s.classList.contains("onq") || s.classList.contains("oncard")) ? (s.classList.contains("young") ? 132 : 104) : 44);
 // Each new question gets a different little idle move, so the Maniac feels alive (works for every look).
-const IDLES = ["bob", "sway", "look", "ball", "dance", "hop"];
+// Calm, slow moves so the Maniac feels alive without pulling your eyes off the question.
+const IDLES = ["float", "sway", "admire", "snack", "toy", "dance", "look"];
 let idleLast = "";
 function pickIdle() { const opts = IDLES.filter((x) => x !== idleLast); idleLast = opts[Math.floor(Math.random() * opts.length)]; return idleLast; }
+const SNACK = `<svg viewBox="0 0 40 24" aria-hidden="true"><path d="M4 12 C4 4 18 2 26 8 C30 11 30 15 26 17 C18 22 4 20 4 12 Z" fill="#c8742a"/><path d="M8 10 C12 6 18 6 22 9" stroke="#e8a35a" stroke-width="2.5" fill="none" stroke-linecap="round"/><rect x="26" y="10" width="9" height="4" rx="2" fill="#f4ead7"/><circle cx="36" cy="10" r="2.6" fill="#f4ead7"/><circle cx="36" cy="14" r="2.6" fill="#f4ead7"/></svg>`;
+const DUCK = `<svg viewBox="0 0 30 26" aria-hidden="true"><ellipse cx="15" cy="18" rx="12" ry="7" fill="#f2c94c"/><circle cx="20" cy="9" r="6" fill="#f2c94c"/><path d="M25 9 L30 10 L25 12 Z" fill="#ff8a1f"/><circle cx="21" cy="8" r="1.2" fill="#14161c"/></svg>`;
 function petFill(s, p, mood) {
-  const idle = s.dataset.idle || "bob";
-  s.innerHTML = `<i class="pmove idle-${idle}">${petSVG(p, { size: petSize(s), mood })}</i>${idle === "ball" && (s.classList.contains("onq") || s.classList.contains("oncard")) ? `<i class="pball"></i>` : ""}`;
+  const idle = s.dataset.idle || "float", big = s.classList.contains("onq") || s.classList.contains("oncard");
+  if (idle === "admire" && mood === "idle") mood = "happy"; // big happy eyes, just admiring you
+  const m = mouthAt(p), sz = petSize(s), young = ["baby", "kid"].includes(stageOf(p.days).id);
+  const prop = !big || mood !== (idle === "admire" ? "happy" : "idle") ? ""
+    : idle === "snack" ? `<i class="pprop snack" style="left:${m.x + 6}%;top:${m.y - 4}%;width:${Math.round(sz * 0.26 * m.k)}px">${SNACK}</i>`
+    : idle === "toy" ? (young ? `<i class="pprop duck" style="width:${Math.round(sz * 0.2)}px">${DUCK}</i>` : `<i class="pprop yoyo"></i>`)
+    : idle === "think" ? `<i class="pprop think"><b></b><b></b><b></b></i>` : "";
+  s.innerHTML = `<i class="pmove idle-${idle}">${petSVG(p, { size: sz, mood })}</i>${prop}`;
 }
 new MutationObserver(() => {
   const p = myPet();
@@ -815,9 +824,9 @@ new MutationObserver(() => {
   const st = stageOf(p.days).id, young = ["egg", "baby", "kid"].includes(st);
   const s = document.createElement("span");
   s.className = "sesspet" + (opts ? " onq" : card ? " oncard" : "") + ((opts || card) && young ? " young" : ""); s.setAttribute("aria-hidden", "true");
-  s.dataset.idle = st === "egg" ? "bob" : card ? "happy" : opts ? pickIdle() : "bob";
+  s.dataset.idle = st === "egg" ? "float" : card ? "think" : opts ? pickIdle() : "float"; // reading a new word: thinking along with you
   const live = REACT && Date.now() < REACT.until; // a reaction still playing when the screen redraws
-  petFill(s, p, live ? REACT.mood : card ? "happy" : "idle");
+  petFill(s, p, live ? REACT.mood : "idle");
   s.classList.toggle("big", !!(live && REACT.big));
   if (opts) { opts.classList.add("haspet", young ? "pet-sm" : "pet-lg"); opts.prepend(s); }
   else if (card) { card.classList.add("haspet", young ? "pet-sm" : "pet-lg"); card.prepend(s); }
@@ -842,7 +851,7 @@ function petReact(kind) { // good | bad | streak
     }
   }
   clearTimeout(reactT);
-  reactT = setTimeout(() => { REACT = null; const t = app.querySelector(".sesspet"); if (t && myPet()) { petFill(t, myPet(), t.classList.contains("oncard") ? "happy" : "idle"); t.classList.remove("big", "cel-jump", "cel-spin", "cel-confetti", "cel-flip", "cel-shake"); } }, ms);
+  reactT = setTimeout(() => { REACT = null; const t = app.querySelector(".sesspet"); if (t && myPet()) { petFill(t, myPet(), "idle"); t.classList.remove("big", "cel-jump", "cel-spin", "cel-confetti", "cel-flip", "cel-shake"); } }, ms);
 }
 // Game XP: a quarter of your score, at most 50 a game and 150 a day from games.
 function gameXp(score) {
