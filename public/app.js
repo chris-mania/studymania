@@ -2111,12 +2111,12 @@ route(/^\/study\/([\w-]+)$/, (id) => {
     <div>${classTag(c)}<div class="kicker" style="color:var(--rev)">Study &amp; Cram${multi ? " · 2 of 2" : ""}</div><h1 style="margin-top:4px">What do you need?</h1></div>
     ${c.total - c.learned > 0 && ((n !== null && n >= 0 && n <= 2) || c.plan.phase === "review") ? opt(`/cram/${id}/new`, "o-new hot", "🆕", "New words", "Words you haven't learned yet, newest first. Card first, then a quick quiz", c.total - c.learned) : ""}
     ${opt(`/cram/${id}/rapid`, "o-cram" + (n !== null && n <= 7 ? " hot" : ""), "⚡", n !== null && n >= 0 && n <= 7 ? `Exam ${n ? `in ${plural(n, "day")}` : "today"}? Cram` : "Cram", "Rapid fire: mostly your weak words, mixed with all the rest")}
+    ${opt(`/games/${id}`, "o-speed", "🎮", "Games", "Falling Words, Match Rush, Sort It and True or False Blitz. A mix of your weak words and all the rest")}
     ${(() => { const r = (c.due || 0) + (c.retest || 0); return opt(r ? `/s/${id}/review/all` : `/cram/${id}/rapid`, "o-rev", "🔁", "Review", r ? `All ${plural(r, "word")} that are due or that it's time to see again, weakest first` : "Nothing due right now. This opens rapid fire instead", r || ""); })()}
     ${opt(`/exam/${id}`, "o-exam", "📝", "Practice exam", "Like the real test, with a score")}
     ${c.missed ? opt(`/missed/${id}`, "o-miss", "🎯", "Missed words", "See them all, tap one to read its card, remove any, then drill them", c.missed) : ""}
     ${c.tricky ? opt(`/cram/${id}/tricky`, "o-tricky", "🧠", "Tricky words", "Every word you've missed before, even once. They also come back more often in reviews.", c.tricky) : ""}
     ${opt(`/add/${id}/cram`, "o-add", "📥", "Add last-minute notes", "Forgot some notes? Short-on-time version: only what's likely on the test, then cram it right away")}
-    ${opt(`/games/${id}`, "o-speed", "🎮", "Games", "Falling Words, Match Rush, Sort It and True or False Blitz. A mix of your weak words and all the rest")}
   </div>`;
 });
 
@@ -2330,7 +2330,7 @@ route(/^\/cram\/([\w-]+)\/(rapid|speed|missed|tricky|new)$/, async (id, mode) =>
 
 // ---------- Games (one class at a time): Match Rush, Sort It, True or False Blitz ----------
 const GAMES = [
-  ["fall", "Falling Words", "A meaning falls from the top. Tap the right word before it hits the floor. 3 lives, and it speeds up as you go.", "pts"],
+  ["fall", "Falling Words", "A meaning falls from the top. Tap the right word before it lands. If you have a Maniac, it lands on them! 3 lives, and it speeds up as you go.", "pts"],
   ["match", "Match Rush", "Beat the clock. Match terms to meanings. Every cleared board adds 8 seconds, every wrong pair costs 3.", "pairs"],
   ["sort", "Sort It", "The look-alike stuff from your \"A vs B\" cards. Sort each example into the right term.", "%"],
   ["tf", "True or False Blitz", "60 seconds. Does this term mean this? Tap, or use the arrow keys. Wrong answers cost a point.", "pts"],
@@ -2418,20 +2418,47 @@ route(/^\/game\/([\w-]+)\/(fall|match|sort|tf)$/, async (id, kind) => {
     const words = d.cards.filter((k) => !isPair(k));
     let bag = [];
     Object.assign(G, { score: 0, lives: 3, speed: 16, y: 0, last: 0, pause: false, cur: null, opts: [] });
-    app.innerHTML = hud(`<span>Score <b id="fs">0</b></span><span class="lives" id="fl"></span>`) + `<div class="arena" id="arena"><div class="drop" id="drop"></div><div class="floor"></div></div><div class="gopts" id="fo"></div></div>`;
-    const drop = $("drop"), arena = $("arena"), fo = $("fo");
+    // A hatched Maniac stands at the bottom: words fall toward it, it gets scared as they get close,
+    // and a missed word lands on it (bruise, then a bandage, then it's knocked out). Eggs / no pet: the plain floor.
+    const pet = myPet() && petMode() !== "off" && stageOf(myPet().days).id !== "egg" ? myPet() : null;
+    const petBox = pet ? (["baby", "kid"].includes(stageOf(pet.days).id) ? 156 : 124) : 0;
+    app.innerHTML = hud(`<span>Score <b id="fs">0</b></span><span class="lives" id="fl"></span>`) + `<div class="arena${pet ? " haspet" : ""}" id="arena"><div class="drop" id="drop"></div>${pet ? `<div class="fpet" id="fpet" style="width:${petBox}px;height:${petBox}px" aria-hidden="true"></div>` : ""}<div class="floor"></div></div><div class="gopts" id="fo"></div></div>`;
+    const drop = $("drop"), arena = $("arena"), fo = $("fo"), fpet = $("fpet");
     const lives = () => { $("fl").innerHTML = [0, 1, 2].map((i) => `<i class="${i < G.lives ? "" : "off"}"></i>`).join(""); }; lives();
-    const maxY = () => arena.clientHeight - drop.offsetHeight - 8;
+    let petState = "";
+    const petShow = (mood, cls = "") => {
+      if (!fpet) return; const key = mood + cls + (3 - G.lives);
+      if (key === petState) return; petState = key;
+      fpet.className = "fpet " + cls; fpet.innerHTML = petSVG(pet, { size: petBox, mood, hurt: 3 - G.lives });
+    };
+    petShow("idle");
+    const floorY = () => arena.clientHeight - drop.offsetHeight - 8;
+    // Where the word lands: on top of the Maniac's head (or the floor without one).
+    const headTop = () => { const g = fpet && fpet.querySelector("svg > g"); if (!g) return null; return g.getBoundingClientRect().top - arena.getBoundingClientRect().top; };
+    let landAt = null;
+    const maxY = () => { if (fpet && landAt == null) landAt = headTop(); return fpet && landAt != null ? Math.max(40, landAt - drop.offsetHeight + 4) : floorY(); };
     const spawn = () => {
       if (!alive()) return;
       if (!bag.length) bag = gamePick(d, words.length, words).filter((k) => k !== G.cur);
       const k = bag.shift() || words[0]; G.cur = k; markShown(d, [k]);
       G.opts = shuffle([k, ...distract(k, Math.min(3, words.length - 1))]);
       drop.className = "drop"; drop.textContent = maskTerm(k.simple, k); G.y = 0; G.pause = false; drop.style.transform = "translateY(0px)";
+      if (G.lives > 0) petShow("idle");
       fo.innerHTML = G.opts.map((o, i) => `<button class="gopt" data-o="${i}">${esc(o.term)}</button>`).join("");
     };
     const lose = (clicked) => {
       G.pause = true; G.lives--; lives(); G.missed.push(G.cur); chime("bad"); buzz([30, 40, 30]);
+      if (fpet) {
+        // The word slams down onto the Maniac, then it shows the hurt.
+        G.y = maxY(); drop.style.transition = "transform .18s ease-in"; drop.style.transform = `translateY(${G.y}px)`;
+        setTimeout(() => {
+          petState = ""; petShow("yikes", G.lives <= 0 ? "ko" : "ouch");
+          // The answer text makes the card taller: bounce it back up so it never covers the Maniac.
+          const up = Math.max(0, (landAt ?? floorY()) - drop.offsetHeight - 14);
+          drop.style.transition = "transform .3s cubic-bezier(.3,1.6,.6,1)"; drop.style.transform = `translateY(${up}px)`;
+          setTimeout(() => { drop.style.transition = ""; }, 320);
+        }, clicked >= 0 ? 190 : 10);
+      }
       const pk = clicked != null && G.opts[clicked] && G.opts[clicked] !== G.cur ? G.opts[clicked] : null;
       drop.className = "drop no"; drop.innerHTML = `<b>${esc(G.cur.term)}</b> · ${esc(G.cur.simple)}${pk ? `<span class="droppick">✗ <b>${esc(pk.term)}</b> · ${esc(pk.simple)}</span>` : ""}`;
       fo.querySelectorAll(".gopt").forEach((b, i) => { if (G.opts[i] === G.cur) b.classList.add("right"); else if (i === clicked) b.classList.add("wrong"); b.disabled = true; });
@@ -2443,13 +2470,19 @@ route(/^\/game\/([\w-]+)\/(fall|match|sort|tf)$/, async (id, kind) => {
       if (G.opts[i] === G.cur) {
         G.pause = true; G.score += 10 + Math.round(10 * (1 - G.y / Math.max(1, maxY()))); $("fs").textContent = G.score;
         G.speed = Math.min(60, G.speed + 1.6); G.right.push(G.cur); b.classList.add("right"); drop.className = "drop ok"; chime("good"); buzz(8);
+        petState = ""; petShow("happy", "yay");
         G.to = setTimeout(spawn, 420);
       } else lose(i);
     };
     const tick = (t) => {
       if (!alive()) return;
       if (!G.last) G.last = t; const dt = Math.min(0.1, (t - G.last) / 1000); G.last = t;
-      if (!G.pause) { G.y += G.speed * dt; if (G.y >= maxY()) { G.y = maxY(); lose(-1); } drop.style.transform = `translateY(${G.y}px)`; }
+      if (!G.pause) {
+        // With a Maniac the drop has less distance to fall, so it falls slower: same time to impact as before.
+        const my = maxY(), f = fpet ? my / Math.max(1, 300 - drop.offsetHeight - 8) : 1; // 300 = the arena height without a Maniac
+        G.y += G.speed * f * dt; if (G.y >= my) { G.y = my; lose(-1); } drop.style.transform = `translateY(${G.y}px)`;
+        if (fpet && !G.pause) petShow(G.y / my > 0.55 ? "yikes" : "idle", G.y / my > 0.55 ? "scared" : "");
+      }
       G.raf = requestAnimationFrame(tick);
     };
     spawn(); G.raf = requestAnimationFrame(tick);

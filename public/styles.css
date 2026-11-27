@@ -819,3 +819,21 @@ details summary{list-style:revert}
 .pconf b{position:absolute;width:7px;height:10px;border-radius:2px;background:var(--c);animation:cConf 1.1s ease-out forwards;transform:rotate(var(--a)) translateY(0)}
 @keyframes cConf{0%{opacity:1;transform:rotate(var(--a)) translateY(0)}100%{opacity:0;transform:rotate(var(--a)) translateY(-60px) rotate(200deg)}}
 @media (prefers-reduced-motion: reduce){.sesspet,.sesspet *{animation:none !important}}
+
+/* Falling Words: the Maniac at the bottom of the arena */
+.arena.haspet{height:340px}
+.fpet{position:absolute;left:50%;bottom:0;transform:translateX(-50%);pointer-events:none;transform-origin:50% 100%}
+.fpet svg{width:100%;height:100%;display:block}
+.fpet.scared{animation:fScared .18s linear infinite}
+@keyframes fScared{0%,100%{transform:translateX(-50%)}50%{transform:translateX(calc(-50% + 2px))}}
+.fpet.yay{animation:fYay .6s ease-out}
+@keyframes fYay{0%,100%{transform:translateX(-50%) translateY(0)}35%{transform:translateX(-50%) translateY(-18px)}}
+.fpet.ouch{animation:fOuch .7s ease-out}
+@keyframes fOuch{0%{transform:translateX(-50%) scale(1,1);filter:none}15%{transform:translateX(-50%) scale(1.15,.75);filter:drop-shadow(0 0 10px #ff5a5a) saturate(1.4)}45%{transform:translateX(-50%) scale(.95,1.05);filter:drop-shadow(0 0 6px #ff5a5a)}100%{transform:translateX(-50%) scale(1,1);filter:none}}
+.fpet.ko{animation:fKo .9s ease-out forwards}
+@keyframes fKo{0%{transform:translateX(-50%) scale(1.15,.75)}40%{transform:translateX(-50%) rotate(0)}100%{transform:translateX(-50%) rotate(-80deg) translateY(10px)}}
+.p-dizzy{animation:pDizzy 1.2s linear infinite}
+@keyframes pDizzy{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion: reduce){.fpet{animation:none !important}}
+.arena.haspet{height:380px}
+@keyframes fKo{0%{transform:translateX(-50%) scale(1.15,.75)}40%{transform:translateX(-50%) rotate(0)}100%{transform:translateX(-50%) rotate(-72deg)}}
