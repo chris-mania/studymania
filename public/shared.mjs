@@ -252,7 +252,30 @@ export function planFor(course, lessons, progress, today) {
 // Lessons + today's plan. Missed a day? Keep the same number of lessons a day you were doing,
 // and put the missed words into your next lessons instead (a few extra words each, max 9).
 export const CATCHUP_MAX_WORDS = 10;
+// Lots of time and only a few lessons left (and no more notes coming)? Make the lessons you haven't
+// started smaller (down to 3 words) so they spread across the days before the exam instead of
+// finishing weeks early. Words you've already learned keep their lessons.
+function stretched(course, cards, progress, today, lessons, plan) {
+  if (plan.phase !== "learn" || plan.more || plan.perDay !== 1 || !plan.left) return null;
+  const exam = isDay(course.exam_date) ? course.exam_date : null;
+  const deadline = exam ? addDays(exam, -Math.max(0, course.review_days ?? 3) - 1) : isDay(course.finish_by) ? course.finish_by : null;
+  if (!deadline) return null;
+  const avail = daysBetween(today, deadline) + 1, startLeft = plan.left + plan.todayDone;
+  if (avail <= startLeft + 1) return null; // already fills the time
+  const isOld = (c) => !!progress[c.id]?.learned_at && progress[c.id].learned_at < today;
+  const wordsLeft = cards.filter((c) => !isOld(c)).length;
+  const size = Math.max(3, Math.min(5, Math.ceil(wordsLeft / avail)));
+  if (size >= 5) return null;
+  const small = buildLessons(cards, { size, isOld });
+  const sp = planFor(course, small, progress, today);
+  if (sp.total <= lessons.length) return null;
+  return { lessons: small, plan: { ...sp, stretch: size } };
+}
 export function lessonsAndPlan(course, cards, progress, today) {
+  const r = catchUpPlan(course, cards, progress, today);
+  return (!r.plan.catchup && stretched(course, cards, progress, today, r.lessons, r.plan)) || r;
+}
+function catchUpPlan(course, cards, progress, today) {
   let lessons = buildLessons(cards), plan = planFor(course, lessons, progress, today);
   if (plan.phase !== "learn" || !plan.left) return { lessons, plan };
   const studied = Object.values(progress).map((p) => p?.learned_at).filter((d) => d && d < today);
