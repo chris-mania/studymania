@@ -1125,3 +1125,6 @@ details summary{list-style:revert}
 @keyframes roll{to{transform:translate(var(--tx),var(--ty)) rotate(-720deg)}}
 .bfxi.bproj.hitme{animation:hitme .5s ease-out forwards}
 @keyframes hitme{0%{transform:scale(.3);opacity:0}30%{transform:scale(1.4);opacity:1}100%{transform:scale(1.1) translateY(-14px);opacity:0}}
+/* boss lunges reach your Maniac */
+@keyframes bAttack{30%{transform:translate(calc(var(--breach,-140px) * .25),-30px)}50%{transform:translateX(var(--breach,-140px))}65%{transform:translateX(calc(var(--breach,-140px) + 10px))}100%{transform:none}}
+@keyframes bSpin{50%{transform:translateX(var(--breach,-160px)) rotate(-360deg)}100%{transform:none}}

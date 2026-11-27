@@ -2604,7 +2604,7 @@ route(/^\/game\/([\w-]+)\/(fall|match|sort|tf|boss)$/, async (id, kind) => {
         let dmg = base * (blast ? 3 : crit ? 1.5 : 1) + Math.min(10, (G.combo - 1) * 2);
         dmg = Math.round(dmg); G.hp -= dmg; G.score += dmg * 10 + (crit ? 20 : 0);
         G.power = blast ? 0 : Math.min(100, G.power + 20);
-        const hitFoe = (delay = 0) => setTimeout(() => { foeP.classList.remove("hit"); void foeP.offsetWidth; foeP.classList.add("hit"); }, delay);
+        const hitFoe = (delay = 0) => setTimeout(() => { foeP.classList.remove("hit", "atk-slam", "atk-throw", "atk-zap", "atk-pound", "atk-spin"); void foeP.offsetWidth; foeP.classList.add("hit"); }, delay);
         const shake = (delay = 0) => setTimeout(() => { const a = $("barena"); if (!a || !alive()) return; a.classList.remove("shake"); void a.offsetWidth; a.classList.add("shake"); }, delay);
         let land = 0; // when the damage lands
         if (blast) {
@@ -2650,10 +2650,15 @@ route(/^\/game\/([\w-]+)\/(fall|match|sort|tf|boss)$/, async (id, kind) => {
         G.missed.push(k); queue.splice(Math.min(queue.length, 2 + Math.floor(Math.random() * 3)), 0, k); // comes back soon
         G.combo = 0; G.hearts--; G.power = Math.max(0, G.power - 20); meP.querySelector(".baura")?.classList.remove("on");
         // The boss feeds off your mistakes: it gets a little health back.
-        const heal = Math.min(100 - G.hp, 6); if (heal > 0) { G.hp += heal; setTimeout(() => { pop(`+${heal}`, "heal"); marks(); bars(); }, 450); }
+        const heal = Math.min(100 - G.hp, 6); if (heal > 0) G.hp += heal;
         // Each boss attacks its own way.
         const atk = boss.attack;
-        foeP.classList.remove("attack", "atk-slam", "atk-throw", "atk-zap", "atk-pound", "atk-spin"); void foeP.offsetWidth; foeP.classList.add("atk-" + atk);
+        // How far the boss has to lunge to actually reach your Maniac (bigger bosses, bigger Maniacs...).
+        { const a = meP.getBoundingClientRect(), b = foeP.getBoundingClientRect(); foeP.style.setProperty("--breach", -Math.max(40, b.left - a.right + b.width * 0.4) + "px"); }
+        foeP.classList.remove("hit", "attack", "atk-slam", "atk-throw", "atk-zap", "atk-pound", "atk-spin"); void foeP.offsetWidth; foeP.classList.add("atk-" + atk);
+        // You only get hurt the moment the attack actually lands on you.
+        const hurtAt = { slam: 350, spin: 400, throw: 640, zap: 380, pound: 690 }[atk] || 400;
+        if (heal > 0) setTimeout(() => { if (!alive()) return; pop(`+${heal}`, "heal"); marks(); bars(); }, hurtAt + 150);
         // Every boss uses its own stuff: papers, books, clocks, candy, ice...
         const fo = ctr(foeP), me = ctr(meP), shot = (delay, cls) => setTimeout(() => { if (!alive()) return; const e = document.createElement("i"); e.className = "bfxi bproj " + cls; e.innerHTML = projSVG(boss); e.style.cssText = `left:${fo.x - 15}px;top:${fo.y - 20}px;--tx:${me.x - fo.x}px;--ty:${me.y - fo.y}px`; fx.appendChild(e); setTimeout(() => e.remove(), 700); }, delay);
         if (atk === "throw") { shot(80, "lob"); shot(200, "lob"); if (BIG) shot(320, "lob"); }
@@ -2661,8 +2666,9 @@ route(/^\/game\/([\w-]+)\/(fall|match|sort|tf|boss)$/, async (id, kind) => {
         if (atk === "pound") { fxAdd("bquake", 150, 600); shot(250, "roll"); }
         if (atk === "slam" || atk === "spin") fxAt("bproj hitme", 300, 500, () => `left:${me.x - 15}px;top:${me.y - 30}px`);
         if (atk === "slam" || atk === "spin") setTimeout(() => { const e = fx.querySelector(".hitme"); if (e) e.innerHTML = projSVG(boss); }, 310);
-        setTimeout(() => { if (!alive()) return; drawMe("yikes", G.hearts <= 0 ? "ko" : "ouch"); pop(i < 0 ? "TOO SLOW!" : "BONK!", "bonk"); $("barena").classList.add("shake"); setTimeout(() => $("barena")?.classList.remove("shake"), 400); }, 250);
-        chime("bad"); buzz([30, 40, 30]); bars();
+        if (i < 0) pop("TOO SLOW!", "bonk");
+        setTimeout(() => { if (!alive()) return; drawMe("yikes", G.hearts <= 0 ? "ko" : "ouch"); fxAt("bspark", 0, 450, () => { const m = ctr(meP); return `left:${m.x - 30}px;top:${m.y - 30}px`; }); pop(["BONK!", "OOF!", "OUCH!"][G.missed.length % 3], "bonk"); $("barena").classList.add("shake"); setTimeout(() => $("barena")?.classList.remove("shake"), 400); bars(); }, hurtAt);
+        chime("bad"); setTimeout(() => buzz([30, 40, 30]), hurtAt);
         const pk = i >= 0 ? opts[i] : null;
         setTimeout(() => {
           if (!alive()) return;
@@ -2671,7 +2677,7 @@ route(/^\/game\/([\w-]+)\/(fall|match|sort|tf|boss)$/, async (id, kind) => {
             ${pk ? `<div class="bans no">You picked <b>${esc(pk.term)}</b> = ${esc(pk.simple)}</div>` : `<div class="bans no">Time ran out.</div>`}
             <button class="btn primary block" id="bup">${G.hearts <= 0 ? "See results" : "Get back up"}</button></div>`;
           $("bup").onclick = () => { if (G.hearts > 0) drawMe(); ask(); };
-        }, 700);
+        }, hurtAt + 500);
       }
     };
     const win = () => {
