@@ -25,6 +25,8 @@ export const nextStage = (days) => STAGES.find((s) => s.min > (days || 0)) || nu
 // ---------- the shop ----------
 // Hair color, skin and eyes are born traits: never sold or changed.
 // slot: hair | top | glasses | hat | freeze. season: [startMonth, endMonth] (1-12). rank: tier index needed (free once reached). elder: unlocks at the elder stage.
+// One price per kind of item (free rank jackets and the elder's wizard hat stay free).
+export const SLOT_PRICE = { hair: 600, top: 800, hat: 700, glasses: 500 };
 export const ITEMS = [
   // hairstyles
   ["spiky", "hair", "Spiky mop", 600], ["swirl", "hair", "Swirl", 600], ["flame", "hair", "Flame", 600], ["wisps", "hair", "Wisps", 600],
@@ -54,7 +56,7 @@ export const ITEMS = [
   ["cowboy", "hat", "Cowboy hat", 1500], ["headband", "hat", "Training headband", 800], ["tophat", "hat", "Top hat", 2500], ["crown", "hat", "Crown", 5000], ["wizard", "hat", "Wizard hat", 0, { elder: true }],
   // other
   ["freeze", "freeze", "Streak freeze", 750],
-].map(([id, slot, name, price, extra]) => ({ id, slot, name, price, ...(extra || {}) }));
+].map(([id, slot, name, price, extra]) => ({ id, slot, name, price: price > 0 && SLOT_PRICE[slot] ? SLOT_PRICE[slot] : price, ...(extra || {}) }));
 export const item = (id) => ITEMS.find((x) => x.id === id) || null;
 export const inSeason = (it, day) => { if (!it.season) return true; const m = +String(day).slice(5, 7); return m >= it.season[0] && m <= it.season[1]; };
 export const FREEZE_MAX = 2;
@@ -245,21 +247,21 @@ function topSVG(id, gid, tint) {
   switch (id) {
     case "tee": return S("#4b98f7") + `<path d="M50 92 Q60 98 70 92" fill="none" stroke="#3a7fd6" stroke-width="2.5"/>`;
     case "stripes": return S("#fff") + `<path d="M27 96 Q60 103 93 96 M33 104 Q60 110 87 104" fill="none" stroke="#2c3e75" stroke-width="4"/>`;
-    case "tank": return `<path d="M34 92 Q60 100 86 92 C84 104 74 110 60 110 C46 110 36 104 34 92 Z" fill="#f2c94c"/><path d="M38 93 L40 86 M82 93 L80 86" stroke="#f2c94c" stroke-width="5" stroke-linecap="round"/>`;
+    case "tank": return `<path d="M34 92 Q60 100 86 92 C84 104 74 110 60 110 C46 110 36 104 34 92 Z" fill="#e2543e"/><path d="M38 93 L40 86 M82 93 L80 86" stroke="#e2543e" stroke-width="5" stroke-linecap="round"/>`;
     case "jersey": return S("#e2543e") + `<path d="M50 90 L60 99 L70 90" fill="none" stroke="#fff" stroke-width="3"/><text x="60" y="108" text-anchor="middle" font-family="Fredoka,sans-serif" font-weight="700" font-size="11" fill="#fff">23</text>`;
     case "hoodie": return S("#8d5bd6") + `<path d="M28 88 Q60 100 92 88" fill="none" stroke="#6f45bd" stroke-width="5"/><path d="M54 95 L53 104 M66 95 L67 104" stroke="#fff" stroke-width="2" stroke-linecap="round"/><path d="M46 102 L74 102 L72 109 L48 109 Z" fill="#6f45bd"/>`;
     case "jean": return S("#3f6fb0") + `<path d="M52 92 L68 92 L66 110 L54 110 Z" fill="#fff"/><path d="M44 88 L52 92 L50 100 Z M76 88 L68 92 L70 100 Z" fill="#2f5a94"/><rect x="34" y="98" width="10" height="6" rx="1" fill="none" stroke="#f2c94c" stroke-width="1.5"/><rect x="76" y="98" width="10" height="6" rx="1" fill="none" stroke="#f2c94c" stroke-width="1.5"/>`;
     case "sweater": return S("#ff9f5a") + `<path d="M27 90 Q60 99 93 90" fill="none" stroke="#e0803c" stroke-width="4"/><path d="M60 107 L53 100 Q50 96 54 94 Q57 93 60 97 Q63 93 66 94 Q70 96 67 100 Z" fill="#e2543e"/>`;
     case "shirttie": return S("#f4f6fa") + `<path d="M48 88 L58 94 L52 98 Z M72 88 L62 94 L68 98 Z" fill="#dfe3ea"/><path d="M57 94 L63 94 L64 98 L62 110 L58 110 L56 98 Z" fill="#e2543e"/>`;
     case "dress": return `<path d="M28 88 Q60 96 92 88 L104 114 Q60 120 16 114 Z" fill="#ff7eb6"/><path d="M30 96 Q60 103 90 96" fill="none" stroke="#d94f8e" stroke-width="4"/><circle cx="40" cy="106" r="2" fill="#fff"/><circle cx="60" cy="110" r="2" fill="#fff"/><circle cx="80" cy="106" r="2" fill="#fff"/>`;
-    case "overalls": return S("#f2c94c") + `<path d="M44 96 L76 96 L80 108 Q60 114 40 108 Z" fill="#3f6fb0"/><path d="M44 96 L38 88 M76 96 L82 88" stroke="#3f6fb0" stroke-width="4" stroke-linecap="round"/>`;
+    case "overalls": return S("#f4f6fa") + `<path d="M44 96 L76 96 L80 108 Q60 114 40 108 Z" fill="#3f6fb0"/><path d="M44 96 L38 88 M76 96 L82 88" stroke="#3f6fb0" stroke-width="4" stroke-linecap="round"/>`;
     case "varsity": return S("#2c3e75") + `<path d="M27 89 Q60 98 93 89" fill="none" stroke="#f4ead7" stroke-width="3.5"/><path d="M60 94 L60 110" stroke="#f4ead7" stroke-width="2"/><text x="44" y="106" text-anchor="middle" font-family="Fredoka,sans-serif" font-weight="700" font-size="11" fill="#f4ead7">S</text>`;
     case "puffer": return `<path d="M22 86 Q60 94 98 86 C96 104 80 112 60 112 C40 112 24 104 22 86 Z" fill="#45d0c6"/><path d="M24 96 Q60 104 96 96 M30 104 Q60 111 90 104" fill="none" stroke="#2fa79e" stroke-width="2.5"/><path d="M60 92 L60 112" stroke="#2fa79e" stroke-width="2.5"/>`;
     case "labcoat": return S("#f4f6fa") + `<path d="M52 92 L60 106 L68 92 Z" fill="#4b98f7"/><path d="M46 88 L56 94 L52 104 Z M74 88 L64 94 L68 104 Z" fill="#dfe3ea"/><rect x="74" y="98" width="10" height="7" rx="1" fill="#dfe3ea"/>`;
     case "tux": return S("#23252e") + `<path d="M50 92 L60 110 L70 92 Q60 96 50 92 Z" fill="#fff"/><path d="M52 92 L60 96 L52 100 Z M68 92 L60 96 L68 100 Z" fill="${INK}"/>`;
     case "raincoat": return `<path d="M24 87 Q60 95 96 87 C94 104 80 112 60 112 C40 112 26 104 24 87 Z" fill="#f2c94c"/><path d="M60 92 L60 112" stroke="#d9a925" stroke-width="2.5"/>`;
-    case "gi": { const a = tint?.a || "#d8432f", b = tint?.b || "#23252e";
-      return S(a) + `<path d="M44 87 L60 104 L76 87" fill="none" stroke="${shade(a, 1.35)}" stroke-width="4"/><path d="M50 88 L60 99 L70 88" fill="${b}"/><path d="M27 101 Q60 109 93 101 L93 106 Q60 114 27 106 Z" fill="${b}"/><path d="M64 106 L70 114 M66 106 L60 114" stroke="${b}" stroke-width="3" stroke-linecap="round"/>`; }
+    case "gi": { const a = tint?.a || "#d8432f", b = tint?.b || "#23252e", hi = shade(a, 1.3);
+      return S(a) + `<path d="M52 89 L60 98 L68 89 Z" fill="${b}"/><path d="M44 88 L60 103 M76 88 L62 101" fill="none" stroke="${hi}" stroke-width="3" stroke-linecap="round"/><path d="M28 100 Q60 107 92 100 L92 105 Q60 112 28 105 Z" fill="${b}"/><path d="M60 104 L55 112 M60 104 L66 112" stroke="${b}" stroke-width="3" stroke-linecap="round"/><circle cx="60" cy="104" r="2.6" fill="${b}"/>`; }
     case "armor": { const a = tint?.a || "#c9d3e3", b = tint?.b || "#5b6b86", dk = shade(a, 0.45);
       return S(b) + `<path d="M40 90 Q60 98 80 90 L78 106 Q60 112 42 106 Z" fill="${a}" stroke="${dk}" stroke-width="2"/><path d="M60 92 L60 108" stroke="${dk}" stroke-width="1.5"/><path d="M20 86 Q24 78 36 82 L40 92 Q28 96 20 86 Z M100 86 Q96 78 84 82 L80 92 Q92 96 100 86 Z" fill="${shade(a, 0.85)}" stroke="${dk}" stroke-width="2"/>`; }
     case "flannel": return S("#c0392b") + `<path d="M38 92 L38 106 M50 94 L50 110 M70 94 L70 110 M82 92 L82 106 M28 98 Q60 106 92 98 M34 105 Q60 112 86 105" fill="none" stroke="#7a1f16" stroke-width="2.5"/>`;
@@ -335,7 +337,9 @@ export function petSVG(p, opts = {}) {
   const glassesId = wear.glasses || (elder ? "elder" : null);
   // Puff is wider and lumpier than the others, so its tops are drawn a bit wider and taller to cover it.
   const topRaw = wear.top ? topSVG(wear.top, id, tintOf(p, wear.top)) : "";
-  const top = topRaw && sp === "puff" ? `<g transform="translate(60 112) scale(1.3 1.08) translate(-60 -112)">${topRaw}</g>` : topRaw;
+  const top = topRaw && sp === "puff"
+    ? `<defs><clipPath id="pc${id}"><circle cx="60" cy="66" r="32"/><circle cx="34" cy="76" r="18"/><circle cx="86" cy="76" r="18"/><circle cx="44" cy="94" r="14"/><circle cx="76" cy="94" r="14"/><circle cx="60" cy="98" r="14"/><rect x="0" y="0" width="120" height="0"/></clipPath></defs><g clip-path="url(#pc${id})"><g transform="translate(60 86) scale(1.45 1.4) translate(-60 -86)">${topRaw}</g></g>`
+    : topRaw;
   const elderBits = elder ? `<path d="M${g.ex[0] - 13} ${g.eyeY - 12} Q${g.ex[0]} ${g.eyeY - 20} ${g.ex[0] + 11} ${g.eyeY - 10}" fill="none" stroke="#e3e7ee" stroke-width="5" stroke-linecap="round"/><path d="M${g.ex[1] - 11} ${g.eyeY - 10} Q${g.ex[1]} ${g.eyeY - 20} ${g.ex[1] + 13} ${g.eyeY - 12}" fill="none" stroke="#e3e7ee" stroke-width="5" stroke-linecap="round"/>${mood === "idle" ? `<path d="M45 ${g.mouthY + 3} Q52 ${g.mouthY - 5} 60 ${g.mouthY + 1} Q68 ${g.mouthY - 5} 75 ${g.mouthY + 3} Q68 ${g.mouthY + 9} 60 ${g.mouthY + 5} Q52 ${g.mouthY + 9} 45 ${g.mouthY + 3} Z" fill="#e3e7ee"/>` : ""}` : "";
   const blank = !!opts.faceless; // the grey stand-in in the shop: no face at all
   const cheeks = blank || mood === "sleep" || sp === "sticker" ? "" : `<ellipse cx="${g.ex[0] - 12}" cy="${g.cheekY}" rx="6" ry="3.5" fill="#ff7eb6" opacity=".45"/><ellipse cx="${g.ex[1] + 12}" cy="${g.cheekY}" rx="6" ry="3.5" fill="#ff7eb6" opacity=".45"/>`;

@@ -944,7 +944,7 @@ route(/^\/shop$/, () => {
     const p = myPet(), T = todayStr();
     const visible = ITEMS.filter((it) => inSeason(it, T));
     const holiday = visible.filter((it) => it.season), jackets = visible.filter((it) => it.rank != null);
-    const tile = (it) => { const st = itemState(it); return `<button type="button" class="itile ${st}" data-it="${it.id}">${it.slot === "freeze" ? `<div class="bigicon sm">❄️</div>` : previewPet(it, 76)}<b>${esc(it.name)}</b>${stateTag(it, st)}</button>`; };
+    const tile = (it) => { const st = itemState(it); return `<button type="button" class="itile ${st}" data-it="${it.id}">${TINTABLE[it.id] ? `<span class="paintbadge" title="You pick its colors">🎨</span>` : ""}${it.slot === "freeze" ? `<div class="bigicon sm">❄️</div>` : previewPet(it, 76)}<b>${esc(it.name)}</b>${TINTABLE[it.id] ? `<span class="muted small">Pick your colors</span>` : ""}${stateTag(it, st)}</button>`; };
     const section = (title, list, note = "") => list.length ? `<h3 class="shop-h">${title}</h3>${note ? `<p class="muted small" style="margin:-4px 0 6px">${note}</p>` : ""}<div class="igrid">${list.map(tile).join("")}</div>` : "";
     app.innerHTML = `${topbar("/")}<div class="stack">
       <div class="spread"><h1 style="margin:0">Shop</h1><span class="pill pts">🪙 ${fmt(ME.user.points || 0)}</span></div>
@@ -2004,6 +2004,7 @@ function celebrate(before, { xp, accuracy, best, text, title, after }) {
     ${myPet() && petMode() !== "off" ? `<div class="cele-pet">${petSVG(myPet(), { size: 124, mood: "happy" })}</div>` : `<div class="big-emoji">${emoji}</div>`}<h1>${head}</h1>
     <p class="muted">${text} ${best >= 3 ? `Best run: ${best} in a row.` : ""}</p>
     <div class="tiles"><div class="tile xp"><b id="xpn">0</b><span>XP</span></div><div class="tile fl"><b>${ME.user.streak}</b><span>Streak</span></div><div class="tile acc"><b>${accuracy}%</b><span>Correct</span></div></div>
+    ${xp > 0 ? `<p class="coinsline">🪙 +${xp} coins for the shop</p>` : ""}
     ${extra}
     <div class="todaybox">
       <div class="${G.done ? "ok" : ""}"><span>${G.done ? "✅" : "⬜"}</span><b>Daily goal</b><span class="grow"></span>${Math.min(G.did, G.goal)} of ${plural(G.goal, G.unit)}${G.bonus ? ` <span class="pill acc">+${G.bonus} bonus</span>` : ""}</div>
@@ -2400,12 +2401,13 @@ route(/^\/game\/([\w-]+)\/(fall|match|sort|tf|boss)$/, async (id, kind) => {
     // Games are fast, so misses are NOT saved on their own: you pick which ones (if any) go to your missed words.
     // Right answers still count toward how well you know each word.
     const results = practiceResults(d, G.right.map((k) => k.id), []);
-    await saveRound({ course_id: id, kind: "review", results, xp: gameXp(score), streak: false, counts: G.right.length + G.missed.length >= 5 });
+    const coins = gameXp(score);
+    await saveRound({ course_id: id, kind: "review", results, xp: coins, streak: false, counts: G.right.length + G.missed.length >= 5 });
     const uniq = missIds.map((cid) => d.cards.find((k) => k.id === cid)).filter(Boolean);
     const already = new Set(missedList(d));
     app.innerHTML = `<div class="sess"><div class="cele">
       ${head || `<div class="big-emoji">${isBest && prev != null ? "🏆" : "🎮"}</div>`}
-      <h1>${score} ${meta[3]}</h1><p class="muted">${isBest && prev != null ? "New best!" : prev != null ? `Best: ${Math.max(prev, score)} ${meta[3]}` : "First game!"}</p>
+      <h1>${score} ${meta[3]}</h1>${coins ? `<p class="coinsline">🪙 +${coins} coins · ⚡ +${coins} XP</p>` : `<p class="muted small">Today's game coins are maxed out. Lessons still earn coins.</p>`}<p class="muted">${isBest && prev != null ? "New best!" : prev != null ? `Best: ${Math.max(prev, score)} ${meta[3]}` : "First game!"}</p>
       ${uniq.length ? `<div class="stack" style="gap:8px;text-align:left;width:100%">
         <div class="kicker">You missed ${plural(uniq.length, "word")}</div>
         <p class="muted small" style="margin:0">Tick the ones you really didn't know to add them to your missed words. Tap a word to see its card.</p>

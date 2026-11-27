@@ -1006,3 +1006,6 @@ details summary{list-style:revert}
 .bfxi.bquake{left:0;right:0;bottom:22px;height:12px;background:radial-gradient(ellipse at 80% 50%,rgba(255,255,255,.6),transparent 70%);animation:quake .6s ease-out forwards}
 @keyframes quake{0%{transform:scaleX(.2);transform-origin:80% 50%}100%{transform:scaleX(1.6);opacity:0;transform-origin:80% 50%}}
 .bfxi.borb{bottom:88px}.bfxi.bbeam{bottom:80px}.bfxi.bball{bottom:90px}.bfxi.bburst{bottom:78px}.bfxi.bimpact{bottom:38px}.bfxi.bring{bottom:58px}.bfxi.bshot{bottom:100px}
+.coinsline{margin:0;font-weight:700;color:#f2c94c;text-align:center}
+.itile{position:relative}
+.paintbadge{position:absolute;top:8px;right:8px;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-size:15px;background:conic-gradient(#d8432f,#f2c94c,#2bb673,#4b98f7,#8d5bd6,#d8432f);box-shadow:0 0 0 2px var(--surface)}
