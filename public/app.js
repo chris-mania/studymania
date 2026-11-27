@@ -795,33 +795,53 @@ async function petGrowDay() {
 // It never covers the question and never makes you wait.
 // On a question it stands on top of the first answer (the question gets room so it's never covered);
 // on other screens it sits small in the top bar.
-const petSize = (s) => (s && s.classList.contains("onq") ? (s.classList.contains("young") ? 132 : 104) : 44);
+const petSize = (s) => (s && (s.classList.contains("onq") || s.classList.contains("oncard")) ? (s.classList.contains("young") ? 132 : 104) : 44);
+// Each new question gets a different little idle move, so the Maniac feels alive (works for every look).
+const IDLES = ["bob", "sway", "look", "ball", "dance", "hop"];
+let idleLast = "";
+function pickIdle() { const opts = IDLES.filter((x) => x !== idleLast); idleLast = opts[Math.floor(Math.random() * opts.length)]; return idleLast; }
+function petFill(s, p, mood) {
+  const idle = s.dataset.idle || "bob";
+  s.innerHTML = `<i class="pmove idle-${idle}">${petSVG(p, { size: petSize(s), mood })}</i>${idle === "ball" && (s.classList.contains("onq") || s.classList.contains("oncard")) ? `<i class="pball"></i>` : ""}`;
+}
 new MutationObserver(() => {
   const p = myPet();
   if (!p || petMode() !== "on" || app.querySelector(".sesspet")) return;
-  const opts = app.querySelector(".sess .qbody .prompt + .opts") && app.querySelector(".sess .qbody .prompt"), top = app.querySelector(".sesstop");
-  const host = opts || top; if (!host) return;
-  const young = ["egg", "baby", "kid"].includes(stageOf(p.days).id);
-  const s = document.createElement("span"); s.className = "sesspet" + (opts ? " onq" : "") + (opts && young ? " young" : ""); s.setAttribute("aria-hidden", "true");
+  const opts = app.querySelector(".sess .qbody .prompt + .opts") && app.querySelector(".sess .qbody .prompt");
+  const card = !opts && app.querySelector(".sess .qbody > .termhead");
+  const top = app.querySelector(".sesstop");
+  const host = opts || card || top; if (!host) return;
+  const st = stageOf(p.days).id, young = ["egg", "baby", "kid"].includes(st);
+  const s = document.createElement("span");
+  s.className = "sesspet" + (opts ? " onq" : card ? " oncard" : "") + ((opts || card) && young ? " young" : ""); s.setAttribute("aria-hidden", "true");
+  s.dataset.idle = st === "egg" ? "bob" : card ? "happy" : opts ? pickIdle() : "bob";
   const live = REACT && Date.now() < REACT.until; // a reaction still playing when the screen redraws
-  s.innerHTML = petSVG(p, { size: petSize(s), mood: live ? REACT.mood : "idle" });
+  petFill(s, p, live ? REACT.mood : card ? "happy" : "idle");
   s.classList.toggle("big", !!(live && REACT.big));
-  // Young pets are drawn smaller inside their box, so they need less room above the answers.
-  if (opts) { opts.classList.add("haspet", young ? "pet-sm" : "pet-lg"); opts.prepend(s); } else top.appendChild(s);
+  if (opts) { opts.classList.add("haspet", young ? "pet-sm" : "pet-lg"); opts.prepend(s); }
+  else if (card) { card.classList.add("haspet", young ? "pet-sm" : "pet-lg"); card.prepend(s); }
+  else top.appendChild(s);
 }).observe(app, { childList: true, subtree: true });
-let reactT = 0, REACT = null;
+let reactT = 0, REACT = null, celIdx = 0;
 function petReact(kind) { // good | bad | streak
   const p = myPet(); if (!p || petMode() !== "on") return;
   const ms = kind === "streak" ? 1800 : 1300;
   REACT = { mood: kind === "bad" ? "yikes" : "happy", big: kind === "streak", until: Date.now() + ms };
   const s = app.querySelector(".sesspet");
   if (s) {
-    s.innerHTML = petSVG(p, { size: petSize(s), mood: REACT.mood }); s.classList.toggle("big", REACT.big);
-    // An egg can't make faces, so it hops (right) or wobbles (wrong).
-    s.classList.remove("egg-hop", "egg-no"); void s.offsetWidth; if (stageOf(p.days).id === "egg") s.classList.add(kind === "bad" ? "egg-no" : "egg-hop");
+    petFill(s, p, REACT.mood); s.classList.toggle("big", REACT.big);
+    const CELS = ["cel-jump", "cel-spin", "cel-confetti", "cel-flip"];
+    s.classList.remove("egg-hop", "egg-no", "cel-shake", ...CELS); void s.offsetWidth;
+    if (stageOf(p.days).id === "egg") s.classList.add(kind === "bad" ? "egg-no" : "egg-hop"); // an egg can't make faces
+    else if (kind === "bad") s.classList.add("cel-shake");
+    else {
+      // Right answers rotate through a few celebrations: jump, spin, confetti pop, backflip.
+      const c = CELS[celIdx++ % CELS.length]; s.classList.add(c);
+      if (c === "cel-confetti") { const cf = document.createElement("i"); cf.className = "pconf"; cf.innerHTML = Array.from({ length: 12 }, (_, i) => `<b style="--a:${i * 30}deg;--c:${["#f2c94c", "#4b98f7", "#8bd795", "#ff9f5a", "#e58bd8"][i % 5]}"></b>`).join(""); s.appendChild(cf); setTimeout(() => cf.remove(), 1200); }
+    }
   }
   clearTimeout(reactT);
-  reactT = setTimeout(() => { REACT = null; const t = app.querySelector(".sesspet"); if (t && myPet()) { t.innerHTML = petSVG(myPet(), { size: petSize(t) }); t.classList.remove("big"); } }, ms);
+  reactT = setTimeout(() => { REACT = null; const t = app.querySelector(".sesspet"); if (t && myPet()) { petFill(t, myPet(), t.classList.contains("oncard") ? "happy" : "idle"); t.classList.remove("big", "cel-jump", "cel-spin", "cel-confetti", "cel-flip", "cel-shake"); } }, ms);
 }
 // Game XP: a quarter of your score, at most 50 a game and 150 a day from games.
 function gameXp(score) {
@@ -1575,7 +1595,7 @@ function cardSheet(k, d) {
 function cardView(k) {
   const pair = k.parts?.length >= 2;
   return `<div class="qbody">
-    <div><div class="term">${esc(k.term)}</div>${k.full ? `<div class="full">${esc(k.full)}</div>` : ""}${pair ? `<div class="full">${k.parts.length} look-alike terms, learned together</div>` : ""}</div>
+    <div class="termhead"><div class="term">${esc(k.term)}</div>${k.full ? `<div class="full">${esc(k.full)}</div>` : ""}${pair ? `<div class="full">${k.parts.length} look-alike terms, learned together</div>` : ""}</div>
     ${pair ? `<div class="pair">${k.parts.map((p) => `<div class="pair-part"><b>${esc(p.term)}</b><p>${esc(p.simple)}</p>${p.example ? `<p class="small muted">${esc(p.example)}</p>` : ""}</div>`).join("")}</div>`
       : `<p class="simple">${esc(k.simple)}</p>`}
     ${k.definition ? `<div class="info"><div class="lbl">Textbook definition</div>${esc(k.definition)}</div>` : ""}
