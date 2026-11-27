@@ -1,6 +1,6 @@
 // Study Mania service worker: offline app shell + daily reminder notifications.
-const CACHE = "sm-v81";
-const SHELL = ["/", "/index.html", "/styles.css", "/app.js", "/prompt.js", "/shared.mjs", "/local.mjs", "/pet.mjs", "/manifest.webmanifest", "/icons/sm-icon-192.png?v=3", "/logo-light.png", "/logo-dark.png"];
+const CACHE = "sm-v82";
+const SHELL = ["/", "/index.html", "/styles.css", "/app.js", "/prompt.js", "/shared.mjs", "/local.mjs", "/pet.mjs", "/boss.mjs", "/manifest.webmanifest", "/icons/sm-icon-192.png?v=3", "/logo-light.png", "/logo-dark.png"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));

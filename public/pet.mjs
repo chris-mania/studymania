@@ -31,12 +31,14 @@ export const ITEMS = [
   ["buzz", "hair", "Buzz cut", 600], ["afro", "hair", "Afro", 600], ["long", "hair", "Long & straight", 600], ["ponytail", "hair", "Ponytail", 600],
   ["buns", "hair", "Space buns", 600], ["mohawk", "hair", "Mohawk", 600], ["swoop", "hair", "Side swoop", 600], ["braids", "hair", "Braids", 600],
   ["bowl", "hair", "Bowl cut", 600], ["bedhead", "hair", "Bedhead", 600], ["topknot", "hair", "Top knot", 600], ["wavy", "hair", "Wavy", 600],
-  ["sprout", "hair", "Sprout curl", 600], ["curls", "hair", "Short curls", 600],
+  ["sprout", "hair", "Sprout curl", 600], ["curls", "hair", "Short curls", 600], ["zap", "hair", "Power spikes", 1500],
   // tops
   ["tee", "top", "Plain tee", 400], ["stripes", "top", "Striped tee", 400], ["tank", "top", "Tank top", 400], ["jersey", "top", "Sports jersey", 1000],
   ["hoodie", "top", "Hoodie", 1000], ["jean", "top", "Jean jacket", 1200], ["sweater", "top", "Heart sweater", 800], ["shirttie", "top", "Shirt & tie", 1000],
   ["dress", "top", "Dress", 1000], ["overalls", "top", "Overalls", 800], ["varsity", "top", "Varsity jacket", 1500], ["puffer", "top", "Puffer", 1200],
   ["labcoat", "top", "Lab coat", 1000], ["tux", "top", "Tux", 5000], ["raincoat", "top", "Raincoat", 800], ["flannel", "top", "Flannel", 800],
+  // fighter gear (for Boss Battle)
+  ["gi", "top", "Fighter gi", 1500], ["armor", "top", "Battle plates", 2500],
   // rank jackets: one per rank tier, free (and only shown) once you reach it
   ...["Wood", "Bronze", "Silver", "Gold", "Platinum", "Emerald", "Sapphire", "Amethyst", "Diamond", "Ruby", "Obsidian", "Champion", "Study Maniac"]
     .map((n, t) => ["j-" + t, "top", n + " jacket", 0, { rank: t }]),
@@ -49,7 +51,7 @@ export const ITEMS = [
   // hats
   ["beanie", "hat", "Beanie", 800], ["cap", "hat", "Cap", 800], ["backcap", "hat", "Backwards cap", 800], ["party", "hat", "Party hat", 600],
   ["bucket", "hat", "Bucket hat", 1000], ["beret", "hat", "Beret", 1000], ["flowers", "hat", "Flower crown", 1000], ["headphones", "hat", "Headphones", 1200],
-  ["cowboy", "hat", "Cowboy hat", 1500], ["tophat", "hat", "Top hat", 2500], ["crown", "hat", "Crown", 5000], ["wizard", "hat", "Wizard hat", 0, { elder: true }],
+  ["cowboy", "hat", "Cowboy hat", 1500], ["headband", "hat", "Training headband", 800], ["tophat", "hat", "Top hat", 2500], ["crown", "hat", "Crown", 5000], ["wizard", "hat", "Wizard hat", 0, { elder: true }],
   // other
   ["freeze", "freeze", "Streak freeze", 750],
 ].map(([id, slot, name, price, extra]) => ({ id, slot, name, price, ...(extra || {}) }));
@@ -190,6 +192,7 @@ function hairParts(id, c, sp) {
     case "long": return { long: true, back: `<path d="M16 112 L16 66 Q16 32 60 32 Q104 32 104 66 L104 112 Z" fill="${c}"/>`, front: `<path d="M22 66 Q22 38 60 38 Q98 38 98 66 Q84 54 60 56 Q36 54 22 66 Z" fill="${c}"/>` };
     case "ponytail": return { long: true, back: `<path d="M86 46 Q116 50 110 98 Q104 78 90 66 Z" fill="${c}"/>`, front: `<path d="M24 62 Q26 40 60 40 Q94 40 96 62 Q78 50 60 52 Q42 50 24 62 Z" fill="${c}"/><circle cx="92" cy="50" r="4" fill="#f2c94c"/>` };
     case "buns": return { long: true, back: `<circle cx="32" cy="38" r="13" fill="${c}"/><circle cx="88" cy="38" r="13" fill="${c}"/>`, front: `<path d="M24 62 Q26 40 60 40 Q94 40 96 62 Q78 50 60 52 Q42 50 24 62 Z" fill="${c}"/>` };
+    case "zap": return { back: `<path d="M24 62 L22 30 L36 44 L34 6 L50 36 L58 -2 L66 34 L80 4 L80 40 L96 18 L96 62 Z" fill="${c}"/><path d="M36 44 L34 18 L46 38 Z M58 10 L62 30 L54 30 Z M80 16 L82 36 L74 34 Z" fill="${shade(c, 1.3)}"/>`, front: `<path d="M30 58 L36 42 L44 54 L52 38 L60 52 L68 38 L76 54 L84 42 L90 58 Q60 44 30 58 Z" fill="${c}"/>` };
     case "mohawk": return { back: `<path d="M50 52 L46 10 L56 22 L60 0 L66 20 L74 6 L70 52 Z" fill="${c}"/>`, front: `<path d="M52 52 L54 42 L66 42 L68 52 Z" fill="${c}"/>` };
     case "swoop": return { back: "", front: `<path d="M22 66 Q22 28 70 30 Q104 34 98 64 Q90 46 70 46 Q46 46 34 64 Q30 60 22 66 Z" fill="${c}"/><path d="M70 30 Q90 18 102 30 Q88 26 80 34 Z" fill="${c}"/>` };
     case "braids": return { long: true, back: `<g fill="${c}"><circle cx="22" cy="64" r="7"/><circle cx="20" cy="76" r="7"/><circle cx="20" cy="88" r="7"/><circle cx="21" cy="100" r="6"/><circle cx="98" cy="64" r="7"/><circle cx="100" cy="76" r="7"/><circle cx="100" cy="88" r="7"/><circle cx="99" cy="100" r="6"/></g><circle cx="21" cy="108" r="3.5" fill="#ff7eb6"/><circle cx="99" cy="108" r="3.5" fill="#ff7eb6"/>`, front: `<path d="M22 64 Q24 40 60 40 Q96 40 98 64 Q80 50 60 52 Q40 50 22 64 Z" fill="${c}"/>` };
@@ -241,6 +244,8 @@ function topSVG(id, gid) {
     case "labcoat": return S("#f4f6fa") + `<path d="M52 92 L60 106 L68 92 Z" fill="#4b98f7"/><path d="M46 88 L56 94 L52 104 Z M74 88 L64 94 L68 104 Z" fill="#dfe3ea"/><rect x="74" y="98" width="10" height="7" rx="1" fill="#dfe3ea"/>`;
     case "tux": return S("#23252e") + `<path d="M50 92 L60 110 L70 92 Q60 96 50 92 Z" fill="#fff"/><path d="M52 92 L60 96 L52 100 Z M68 92 L60 96 L68 100 Z" fill="${INK}"/>`;
     case "raincoat": return `<path d="M24 87 Q60 95 96 87 C94 104 80 112 60 112 C40 112 26 104 24 87 Z" fill="#f2c94c"/><path d="M60 92 L60 112" stroke="#d9a925" stroke-width="2.5"/>`;
+    case "gi": return S("#d8432f") + `<path d="M44 87 L60 104 L76 87" fill="none" stroke="#f4ead7" stroke-width="4"/><path d="M50 88 L60 99 L70 88" fill="#23252e"/><path d="M27 101 Q60 109 93 101 L93 106 Q60 114 27 106 Z" fill="#23252e"/><path d="M64 106 L70 114 M66 106 L60 114" stroke="#23252e" stroke-width="3" stroke-linecap="round"/>`;
+    case "armor": return S("#5b6b86") + `<path d="M40 90 Q60 98 80 90 L78 106 Q60 112 42 106 Z" fill="#c9d3e3" stroke="#3b465a" stroke-width="2"/><path d="M60 92 L60 108" stroke="#3b465a" stroke-width="1.5"/><path d="M20 86 Q24 78 36 82 L40 92 Q28 96 20 86 Z M100 86 Q96 78 84 82 L80 92 Q92 96 100 86 Z" fill="#8fd0ff" stroke="#3b465a" stroke-width="2"/>`;
     case "flannel": return S("#c0392b") + `<path d="M38 92 L38 106 M50 94 L50 110 M70 94 L70 110 M82 92 L82 106 M28 98 Q60 106 92 98 M34 105 Q60 112 86 105" fill="none" stroke="#7a1f16" stroke-width="2.5"/>`;
     case "turkey": return S("#a0522d") + `<g transform="translate(60 102)"><path d="M-9 0 Q-12 -10 -4 -10 M9 0 Q12 -10 4 -10 M0 -2 Q0 -14 0 -12" stroke="#e2543e" stroke-width="4" stroke-linecap="round" fill="none"/><circle r="5" fill="#6b3a1f"/><circle cx="1.5" cy="-1" r="1" fill="#fff"/></g>`;
     case "ugly": return S("#2e8b57") + `<path d="M27 92 L35 98 L43 92 L51 98 L59 92 L67 98 L75 92 L83 98 L93 92" fill="none" stroke="#fff" stroke-width="2.5"/><circle cx="40" cy="104" r="2.5" fill="#e2543e"/><circle cx="60" cy="106" r="2.5" fill="#f2c94c"/><circle cx="80" cy="104" r="2.5" fill="#e2543e"/>`;
@@ -265,6 +270,7 @@ function glassesSVG(id) { // drawn for eyes at (47,64) and (73,64)
 function hatSVG(id) { // drawn for a head top at y=42
   switch (id) {
     case "beanie": return `<path d="M22 56 Q22 24 60 24 Q98 24 98 56 Z" fill="#e2543e"/><rect x="20" y="50" width="80" height="10" rx="5" fill="#b8402f"/><circle cx="60" cy="20" r="7" fill="#fff"/>`;
+    case "headband": return `<path d="M24 50 Q60 40 96 50 L96 58 Q60 48 24 58 Z" fill="#d8432f"/><rect x="52" y="44" width="16" height="9" rx="2" fill="#c9d3e3" stroke="#3b465a" stroke-width="1.5"/><path d="M96 52 Q108 56 112 66 M96 56 Q106 62 106 74" fill="none" stroke="#d8432f" stroke-width="4" stroke-linecap="round"/>`;
     case "cap": return `<path d="M26 54 Q28 26 60 26 Q92 26 94 54 Z" fill="#4b98f7"/><path d="M22 54 Q60 68 98 54 L98 52 Q60 60 22 52 Z" fill="#2c66b0"/><circle cx="60" cy="27" r="3.5" fill="#2c66b0"/>`;
     case "backcap": return `<path d="M28 50 L4 44 Q4 52 26 56 Z" fill="#1f8a5c"/><path d="M26 54 Q28 26 60 26 Q92 26 94 54 Z" fill="#2bb673"/><path d="M52 46 Q60 42 68 46" fill="none" stroke="#1f8a5c" stroke-width="3"/>`;
     case "bucket": return `<path d="M32 50 Q34 24 60 24 Q86 24 88 50 Z" fill="#c9b27a"/><path d="M14 56 Q60 42 106 56 Q60 66 14 56 Z" fill="#b39a5e"/>`;

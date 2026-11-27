@@ -1,6 +1,7 @@
 /* Study Mania — app screens */
 import { addDays, daysBetween, niceDate, buildLessons, planFor, lessonsAndPlan, isTricky, pickThrowbacks, secondReminderHour, mergeMissed, mastery, needsRetest, needScore, parseBest, GAME_KINDS } from "./shared.mjs";
 import { localApi, hasGuestData, guestExport, clearGuest } from "./local.mjs";
+import { BOSSES, bossSVG } from "./boss.mjs";
 import { petSVG, emblemSVG, rankOf, allRanks, ITEMS, item, owns, inSeason, stageOf, nextStage, SPECIES_NAME, FREEZE_MAX, TIERS, TOP_XP } from "./pet.mjs";
 
 // ---------- helpers ----------
@@ -2330,11 +2331,19 @@ route(/^\/cram\/([\w-]+)\/(rapid|speed|missed|tricky|new)$/, async (id, mode) =>
 
 // ---------- Games (one class at a time): Match Rush, Sort It, True or False Blitz ----------
 const GAMES = [
+  ["boss", "Boss Battle", "Your Maniac vs a boss. Right answers hit it, wrong answers get you hit. Chain combos, fill your power meter, then let it rip.", "pts"],
   ["fall", "Falling Words", "A meaning falls from the top. Tap the right word before it lands. If you have a Maniac, it lands on them! 3 lives, and it speeds up as you go.", "pts"],
   ["match", "Match Rush", "Beat the clock. Match terms to meanings. Every cleared board adds 8 seconds, every wrong pair costs 3.", "pairs"],
   ["sort", "Sort It", "The look-alike stuff from your \"A vs B\" cards. Sort each example into the right term.", "%"],
   ["tf", "True or False Blitz", "60 seconds. Does this term mean this? Tap, or use the arrow keys. Wrong answers cost a point.", "pts"],
 ];
+// Boss Battle needs a hatched Maniac. Eggs see how many study days are left to unlock it.
+function bossLock() {
+  const p = myPet();
+  if (!p) return "Claim your free Maniac egg (on Home) to unlock this game.";
+  if (stageOf(p.days).id === "egg") { const n = Math.max(1, 3 - (p.days || 0)); return `🔒 Hatch your Maniac to unlock: ${plural(n, "more study day")}. Study anything to get there.`; }
+  return null;
+}
 // Sort It sets come from "A vs B" cards: each term is a bucket, its examples/situations/meanings are the cards to sort.
 const sortSets = (d) => d.cards.filter(isPair).map((k) => ({ k, name: k.term, b: k.parts.filter((p) => p.term).map((p) => ({ term: p.term, items: [p.scenario, p.example, p.simple].filter(Boolean).map((t) => maskNames(t, k)) })) })).filter((s) => s.b.length >= 2);
 route(/^\/games\/([\w-]+)$/, async (id) => {
@@ -2350,25 +2359,25 @@ route(/^\/games\/([\w-]+)$/, async (id) => {
     <div class="card stack" style="gap:8px"><b style="font-size:15px">Which words?</b>
       <div class="seg wrap" role="group" aria-label="Which words">${[["hard", "My hardest words first"], ["mix", "Every word, mixed"]].map(([v, l]) => `<button type="button" data-gw="${v}" aria-pressed="${store.get(gameWordsKey(id), "mix") === v}">${l}</button>`).join("")}</div>
       <p class="small muted" style="margin:0" id="gw-note"></p></div>
-    <div class="ggrid">${GAMES.map(([k, n, desc, u]) => { const off = (k === "sort" && !sets.length) || (k !== "sort" && d.cards.length < 4);
-      return `<a class="gtile ${off ? "off" : ""}" href="${off ? "#/games/" + id : `#/game/${id}/${k}`}"><span class="gico" aria-hidden="true">${{ fall: "🌧", match: "🧩", sort: "🗂", tf: "⚡" }[k]}</span><b>${n}</b><span>${off ? (k === "sort" ? "Needs \"A vs B\" cards in this class." : "Needs at least 4 words.") : desc}</span><span class="best">${best(k) != null ? `Best: ${best(k)} ${u}` : "Not played yet"}</span></a>`; }).join("")}</div>
+    <div class="ggrid">${GAMES.map(([k, n, desc, u]) => { const lock = k === "boss" ? bossLock() : null; const off = !!lock || (k === "sort" && !sets.length) || (k !== "sort" && d.cards.length < 4);
+      return `<a class="gtile ${off ? "off" : ""} ${k === "boss" ? "gboss" : ""}" href="${off ? "#/games/" + id : `#/game/${id}/${k}`}"><span class="gico" aria-hidden="true">${{ fall: "🌧", match: "🧩", sort: "🗂", tf: "⚡", boss: "🥊" }[k]}</span><b>${n}${k === "boss" ? ` <span class="pill acc">New</span>` : ""}</b><span>${lock || (off ? (k === "sort" ? "Needs \"A vs B\" cards in this class." : "Needs at least 4 words.") : desc)}</span><span class="best">${best(k) != null ? `Best: ${best(k)} ${u}` : "Not played yet"}</span></a>`; }).join("")}</div>
   </div>`;
   const note = () => { $("gw-note").textContent = store.get(gameWordsKey(id), "mix") === "hard" ? "Starts with words you missed and the ones you know least." : "Mostly weak words, mixed with all the rest, so you see every word over time."; };
   app.querySelectorAll("[data-gw]").forEach((b) => (b.onclick = () => { store.set(gameWordsKey(id), b.dataset.gw); app.querySelectorAll("[data-gw]").forEach((x) => x.setAttribute("aria-pressed", x === b)); note(); }));
   note();
 });
-route(/^\/game\/([\w-]+)\/(fall|match|sort|tf)$/, async (id, kind) => {
+route(/^\/game\/([\w-]+)\/(fall|match|sort|tf|boss)$/, async (id, kind) => {
   setCurClass(id);
   let d;
   try { d = await loadCourse(id); } catch (e) { toast(e.message); return go("/"); }
   const G = { dead: false, missed: [], right: [], raf: 0, to: 0 };
-  const stop = () => { G.dead = true; cancelAnimationFrame(G.raf); clearTimeout(G.to); if (G.key) document.removeEventListener("keydown", G.key); };
+  const stop = () => { G.dead = true; cancelAnimationFrame(G.raf); clearTimeout(G.to); clearInterval(G.tick); if (G.key) document.removeEventListener("keydown", G.key); };
   const here = location.hash;
   const alive = () => { if (location.hash !== here) { stop(); return false; } return !G.dead; };
   const meta = GAMES.find((g) => g[0] === kind);
   const hud = (right) => `<div class="sess"><div class="ghud"><a class="btn ghost small" href="#/games/${id}" id="gback">‹ Games</a><div class="hud">${right}</div></div>${classTag(d.course)}<div class="kicker">${meta[1]}</div>`;
   const distract = (k, n) => shuffle(d.cards.filter((x) => x.id !== k.id && !isPair(x))).slice(0, n);
-  const over = async (score, higherBetter = true) => {
+  const over = async (score, higherBetter = true, head = "") => {
     stop();
     const key = `sm-game-${kind}-${id}`, acctPrev = parseBest(d.course.games)[kind], locPrev = store.get(key, null);
     const prev = acctPrev == null ? locPrev : locPrev == null ? acctPrev : Math.max(acctPrev, locPrev);
@@ -2386,7 +2395,7 @@ route(/^\/game\/([\w-]+)\/(fall|match|sort|tf)$/, async (id, kind) => {
     const uniq = missIds.map((cid) => d.cards.find((k) => k.id === cid)).filter(Boolean);
     const already = new Set(missedList(d));
     app.innerHTML = `<div class="sess"><div class="cele">
-      <div class="big-emoji">${isBest && prev != null ? "🏆" : "🎮"}</div>
+      ${head || `<div class="big-emoji">${isBest && prev != null ? "🏆" : "🎮"}</div>`}
       <h1>${score} ${meta[3]}</h1><p class="muted">${isBest && prev != null ? "New best!" : prev != null ? `Best: ${Math.max(prev, score)} ${meta[3]}` : "First game!"}</p>
       ${uniq.length ? `<div class="stack" style="gap:8px;text-align:left;width:100%">
         <div class="kicker">You missed ${plural(uniq.length, "word")}</div>
@@ -2486,6 +2495,110 @@ route(/^\/game\/([\w-]+)\/(fall|match|sort|tf)$/, async (id, kind) => {
       G.raf = requestAnimationFrame(tick);
     };
     spawn(); G.raf = requestAnimationFrame(tick);
+  }
+
+  if (kind === "boss") {
+    if (bossLock() || d.cards.filter((k) => !isPair(k)).length < 4) { toast(bossLock() || "Needs at least 4 words."); return go(`/games/${id}`); }
+    // Boss Battle: your Maniac vs a random boss. Right = you hit (fast = critical), wrong or time up = it hits you
+    // and you see the right answer; that word comes back later. 5 in a row charges a triple-damage Mania Blast.
+    // At half health the boss powers up (shorter timer). 3 hearts.
+    const pet = myPet(), boss = BOSSES[Math.floor(Math.random() * BOSSES.length)];
+    const words = d.cards.filter((k) => !isPair(k)), N = Math.min(12, words.length);
+    const queue = gamePick(d, N, words);
+    const base = Math.ceil(100 / N);
+    Object.assign(G, { hp: 100, hearts: 3, combo: 0, best: 0, power: 0, blast: false, rage: false, score: 0, q: null, t0: 0, left: 0, busy: false });
+    const petSize = ["baby", "kid"].includes(stageOf(pet.days).id) ? 150 : 124;
+    app.innerHTML = hud(`<span class="bhearts" id="bh"></span><span class="btime" id="bt">15</span>`) + `
+      <div class="bbars"><div class="bbar me"><i id="bme" style="width:100%"></i></div><b class="bvs">VS</b><div class="bbar foe"><i id="bfoe" style="width:100%"></i></div></div>
+      <div class="bnames"><span>${esc(pet.name || "Your Maniac")}</span><span>${esc(boss.name)}</span></div>
+      <div class="bpower"><span>POWER</span><div><i id="bpw" style="width:0%"></i></div><span id="bcombo"></span></div>
+      <div class="barena" id="barena"><div class="bfx" id="bfx"></div>
+        <div class="bme" id="bmeP" aria-hidden="true"></div>
+        <div class="bfoe" id="bfoeP" style="--bc:${boss.color}">${bossSVG(boss, 132)}</div></div>
+      <div class="bcard" id="bcard"></div></div>`;
+    const meP = $("bmeP"), foeP = $("bfoeP"), card = $("bcard"), fx = $("bfx");
+    const drawMe = (mood = "idle", cls = "") => { meP.className = "bme " + cls; meP.innerHTML = petSVG(pet, { size: petSize, mood, hurt: 3 - G.hearts }); };
+    const pop = (text, cls) => { const e = document.createElement("div"); e.className = "bpop " + cls; e.textContent = text; fx.appendChild(e); setTimeout(() => e.remove(), 1300); };
+    const bars = () => {
+      $("bh").innerHTML = [0, 1, 2].map((i) => `<i class="${i < G.hearts ? "" : "off"}">♥</i>`).join("");
+      $("bfoe").style.width = Math.max(0, G.hp) + "%"; $("bme").style.width = (G.hearts / 3) * 100 + "%";
+      $("bpw").style.width = G.power + "%"; $("bpw").parentElement.classList.toggle("full", G.power >= 100);
+      $("bcombo").textContent = G.combo >= 2 ? `COMBO x${G.combo}` : "";
+    };
+    drawMe(); bars();
+    // Intro: VS splash and a taunt, then fight.
+    card.innerHTML = `<div class="bintro"><div class="bvsbig">VS</div><p>“${esc(boss.taunt)}”</p><button class="btn primary block" id="bgo">FIGHT!</button></div>`;
+    pop("ROUND 1", "round");
+    $("bgo").onclick = () => { pop("FIGHT!", "fight"); chime("good"); ask(); };
+    const timerMax = () => (G.rage ? 10 : 15);
+    const ask = () => {
+      if (!alive()) return;
+      if (G.hp <= 0) return win();
+      if (G.hearts <= 0) return lose();
+      if (!queue.length) queue.push(...gamePick(d, Math.min(6, words.length), words));
+      const k = queue.shift(); G.q = k; markShown(d, [k]); G.busy = false;
+      const rev = Math.random() < 0.35; // sometimes show the meaning and ask for the word
+      const opts = shuffle([k, ...distract(k, 3)]);
+      card.innerHTML = `<div class="bq ${G.power >= 100 ? "charged" : ""}"><div class="kicker">${G.power >= 100 ? "⚡ POWER FULL: next hit is a MANIA BLAST" : rev ? "Which word is this?" : "Attack! Pick the meaning"}</div>
+        <div class="bprompt">${rev ? esc(maskTerm(k.simple, k)) : `What does <b>${esc(k.term)}</b> mean?`}</div>
+        <div class="bopts">${opts.map((o, i) => `<button class="bopt" data-i="${i}">${esc(rev ? o.term : maskTerm(o.simple, o))}</button>`).join("")}</div></div>`;
+      card.querySelector(".bq").animate([{ transform: "translateY(60%)", opacity: 0 }, { transform: "translateY(0)", opacity: 1 }], { duration: 300, easing: "cubic-bezier(.2,.9,.3,1)" });
+      G.t0 = performance.now(); G.left = timerMax();
+      clearInterval(G.tick); G.tick = setInterval(() => {
+        if (!alive()) return clearInterval(G.tick);
+        if (G.busy) return;
+        G.left = Math.max(0, timerMax() - Math.floor((performance.now() - G.t0) / 1000)); $("bt").textContent = G.left; $("bt").classList.toggle("low", G.left <= 4);
+        if (G.left <= 0) answer(-1, opts);
+      }, 250);
+      card.querySelectorAll(".bopt").forEach((b) => (b.onclick = () => answer(+b.dataset.i, opts)));
+    };
+    const answer = (i, opts) => {
+      if (G.busy) return; G.busy = true; clearInterval(G.tick);
+      const k = G.q, ok = i >= 0 && opts[i] === k, secs = (performance.now() - G.t0) / 1000;
+      card.querySelectorAll(".bopt").forEach((b, j) => { if (opts[j] === k) b.classList.add("right"); else if (j === i) b.classList.add("wrong"); b.disabled = true; });
+      if (ok) {
+        G.right.push(k); G.combo++; G.best = Math.max(G.best, G.combo);
+        const blast = G.power >= 100, crit = secs < 4;
+        let dmg = base * (blast ? 3 : crit ? 1.5 : 1) + Math.min(10, (G.combo - 1) * 2);
+        dmg = Math.round(dmg); G.hp -= dmg; G.score += dmg * 10 + (crit ? 20 : 0);
+        G.power = blast ? 0 : Math.min(100, G.power + 20);
+        drawMe("happy", blast ? "blast" : "punch"); foeP.classList.remove("hit"); void foeP.offsetWidth; foeP.classList.add("hit");
+        if (blast) { pop("MANIA... MANIA... BLAST!", "blastp"); confetti(1); buzz([20, 30, 60]); }
+        else pop(crit ? "CRITICAL!" : ["POW!", "BAM!", "WHAM!", "SMACK!"][G.right.length % 4], crit ? "crit" : "hitp");
+        setTimeout(() => pop(`-${dmg}`, "dmg"), 120);
+        if (G.combo >= 3 && !blast) setTimeout(() => pop(`${G.combo} HIT COMBO!`, "combo"), 250);
+        chime("good");
+        if (!G.rage && G.hp > 0 && G.hp <= 50) {
+          G.rage = true; setTimeout(() => { foeP.classList.add("rage"); pop("It's powering up!", "rage"); setTimeout(() => pop("This isn't even its final form?!", "rage2"), 700); buzz([40, 40, 40]); }, 700);
+        }
+        bars();
+        setTimeout(() => { if (G.hp <= 0) win(); else ask(); }, G.rage && G.hp <= 50 && G.hp + dmg > 50 ? 2300 : 900);
+      } else {
+        G.missed.push(k); queue.splice(Math.min(queue.length, 2 + Math.floor(Math.random() * 3)), 0, k); // comes back soon
+        G.combo = 0; G.hearts--; G.power = Math.max(0, G.power - 20);
+        foeP.classList.remove("attack"); void foeP.offsetWidth; foeP.classList.add("attack");
+        setTimeout(() => { drawMe("yikes", G.hearts <= 0 ? "ko" : "ouch"); pop(i < 0 ? "TOO SLOW!" : "BONK!", "bonk"); $("barena").classList.add("shake"); setTimeout(() => $("barena").classList.remove("shake"), 400); }, 250);
+        chime("bad"); buzz([30, 40, 30]); bars();
+        const pk = i >= 0 ? opts[i] : null;
+        setTimeout(() => {
+          if (!alive()) return;
+          card.innerHTML = `<div class="bq bad"><div class="kicker" style="color:var(--bad)">${G.hearts <= 0 ? "Knocked out!" : `Ouch! ${plural(G.hearts, "heart")} left · this word comes back`}</div>
+            <div class="bans ok"><b>${esc(k.term)}</b> = ${esc(k.simple)}</div>
+            ${pk ? `<div class="bans no">You picked <b>${esc(pk.term)}</b> = ${esc(pk.simple)}</div>` : `<div class="bans no">Time ran out.</div>`}
+            <button class="btn primary block" id="bup">${G.hearts <= 0 ? "See results" : "Get back up"}</button></div>`;
+          $("bup").onclick = () => { if (G.hearts > 0) drawMe(); ask(); };
+        }, 700);
+      }
+    };
+    const win = () => {
+      clearInterval(G.tick); foeP.classList.add("ko"); pop("K.O.!", "ko"); chime("win"); confetti(1.4);
+      G.score += G.hearts * 100 + G.best * 15;
+      setTimeout(() => over(G.score, true, `<div class="bko">K.O.!</div><div class="bres">${esc(pet.name || "Your Maniac")} beat ${esc(boss.name)} · ${plural(G.hearts, "heart")} left · best combo x${G.best}</div>`), 1800);
+    };
+    const lose = () => {
+      clearInterval(G.tick);
+      setTimeout(() => over(G.score, true, `<div class="bko lost">DEFEATED</div><div class="bres">${esc(boss.name)} wins this time. Rematch with the words you missed fresh in your head!</div>`), 300);
+    };
   }
 
   if (kind === "match") {

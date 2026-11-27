@@ -94,7 +94,7 @@ export function pullDue(due, m, day) {
 }
 
 // Game best scores, saved on the class so they follow your account. Higher is better in every game.
-export const GAME_KINDS = ["fall", "match", "sort", "tf"];
+export const GAME_KINDS = ["fall", "match", "sort", "tf", "boss"];
 const LOWER_BETTER = {};
 export function parseBest(json) { try { const o = JSON.parse(json || "{}"); return o && typeof o === "object" ? o : {}; } catch { return {}; } }
 export function mergeBest(json, kind, score) {
