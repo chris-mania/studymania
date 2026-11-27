@@ -2650,7 +2650,7 @@ route(/^\/game\/([\w-]+)\/(fall|match|sort|tf|boss)$/, async (id, kind) => {
         G.missed.push(k); queue.splice(Math.min(queue.length, 2 + Math.floor(Math.random() * 3)), 0, k); // comes back soon
         G.combo = 0; G.hearts--; G.power = Math.max(0, G.power - 20); meP.querySelector(".baura")?.classList.remove("on");
         // The boss feeds off your mistakes: it gets a little health back.
-        const heal = Math.min(100 - G.hp, 6); if (heal > 0) G.hp += heal;
+        const heal = Math.min(100 - G.hp, 2); if (heal > 0) G.hp += heal;
         // Each boss attacks its own way.
         const atk = boss.attack;
         // How far the boss has to lunge to actually reach your Maniac (bigger bosses, bigger Maniacs...).
