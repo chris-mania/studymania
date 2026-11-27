@@ -31,7 +31,7 @@ export const ITEMS = [
   ["buzz", "hair", "Buzz cut", 600], ["afro", "hair", "Afro", 600], ["long", "hair", "Long & straight", 600], ["ponytail", "hair", "Ponytail", 600],
   ["buns", "hair", "Space buns", 600], ["mohawk", "hair", "Mohawk", 600], ["swoop", "hair", "Side swoop", 600], ["braids", "hair", "Braids", 600],
   ["bowl", "hair", "Bowl cut", 600], ["bedhead", "hair", "Bedhead", 600], ["topknot", "hair", "Top knot", 600], ["wavy", "hair", "Wavy", 600],
-  ["sprout", "hair", "Sprout curl", 600], ["curls", "hair", "Short curls", 600], ["zap", "hair", "Power spikes", 1500],
+  ["sprout", "hair", "Sprout curl", 600], ["curls", "hair", "Short curls", 600], ["zap", "hair", "Power spikes", 9001],
   // tops
   ["tee", "top", "Plain tee", 400], ["stripes", "top", "Striped tee", 400], ["tank", "top", "Tank top", 400], ["jersey", "top", "Sports jersey", 1000],
   ["hoodie", "top", "Hoodie", 1000], ["jean", "top", "Jean jacket", 1200], ["sweater", "top", "Heart sweater", 800], ["shirttie", "top", "Shirt & tie", 1000],

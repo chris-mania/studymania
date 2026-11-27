@@ -2340,7 +2340,7 @@ const GAMES = [
 // Boss Battle needs a hatched Maniac. Eggs see how many study days are left to unlock it.
 function bossLock() {
   const p = myPet();
-  if (!p) return "Claim your free Maniac egg (on Home) to unlock this game.";
+  if (!p) return "🔒 Needs a hatched Maniac. Claim your free egg on Home, then study 3 days to hatch it.";
   if (stageOf(p.days).id === "egg") { const n = Math.max(1, 3 - (p.days || 0)); return `🔒 Hatch your Maniac to unlock: ${plural(n, "more study day")}. Study anything to get there.`; }
   return null;
 }
