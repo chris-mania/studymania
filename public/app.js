@@ -2513,11 +2513,13 @@ route(/^\/game\/([\w-]+)\/(fall|match|sort|tf|boss)$/, async (id, kind) => {
       <div class="bnames"><span>${esc(pet.name || "Your Maniac")}</span><span>${esc(boss.name)}</span></div>
       <div class="bpower"><span>POWER</span><div><i id="bpw" style="width:0%"></i></div><span id="bcombo"></span></div>
       <div class="barena" id="barena"><div class="bfx" id="bfx"></div>
+        <div class="baura" id="baura" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
         <div class="bme" id="bmeP" aria-hidden="true"></div>
         <div class="bfoe" id="bfoeP" style="--bc:${boss.color}">${bossSVG(boss, 132)}</div></div>
       <div class="bcard" id="bcard"></div></div>`;
     const meP = $("bmeP"), foeP = $("bfoeP"), card = $("bcard"), fx = $("bfx");
     const drawMe = (mood = "idle", cls = "") => { meP.className = "bme " + cls; meP.innerHTML = petSVG(pet, { size: petSize, mood, hurt: 3 - G.hearts }); };
+    const fxAdd = (cls, delay, life, style = "") => setTimeout(() => { if (!alive()) return; const e = document.createElement("i"); e.className = "bfxi " + cls; if (style) e.style.cssText = style; fx.appendChild(e); setTimeout(() => e.remove(), life); }, delay);
     const pop = (text, cls) => { const e = document.createElement("div"); e.className = "bpop " + cls; e.textContent = text; fx.appendChild(e); setTimeout(() => e.remove(), 1300); };
     const bars = () => {
       $("bh").innerHTML = [0, 1, 2].map((i) => `<i class="${i < G.hearts ? "" : "off"}">♥</i>`).join("");
@@ -2562,20 +2564,35 @@ route(/^\/game\/([\w-]+)\/(fall|match|sort|tf|boss)$/, async (id, kind) => {
         let dmg = base * (blast ? 3 : crit ? 1.5 : 1) + Math.min(10, (G.combo - 1) * 2);
         dmg = Math.round(dmg); G.hp -= dmg; G.score += dmg * 10 + (crit ? 20 : 0);
         G.power = blast ? 0 : Math.min(100, G.power + 20);
-        drawMe("happy", blast ? "blast" : "punch"); foeP.classList.remove("hit"); void foeP.offsetWidth; foeP.classList.add("hit");
-        if (blast) { pop("MANIA... MANIA... BLAST!", "blastp"); confetti(1); buzz([20, 30, 60]); }
-        else pop(crit ? "CRITICAL!" : ["POW!", "BAM!", "WHAM!", "SMACK!"][G.right.length % 4], crit ? "crit" : "hitp");
-        setTimeout(() => pop(`-${dmg}`, "dmg"), 120);
-        if (G.combo >= 3 && !blast) setTimeout(() => pop(`${G.combo} HIT COMBO!`, "combo"), 250);
+        const hitFoe = (delay = 0) => setTimeout(() => { foeP.classList.remove("hit"); void foeP.offsetWidth; foeP.classList.add("hit"); }, delay);
+        const shake = (delay = 0) => setTimeout(() => { const a = $("barena"); a.classList.remove("shake"); void a.offsetWidth; a.classList.add("shake"); }, delay);
+        let land = 0; // when the damage lands
+        if (blast) {
+          // Ultimates take turns: an energy wave, a star storm, a meteor slam.
+          const u = (store.get("sm-boss-ult", -1) + 1) % 3; store.set("sm-boss-ult", u); // rotates across fights too
+          if (u === 0) { drawMe("happy", "charge"); fxAdd("borb", 0, 700); fxAdd("bbeam", 650, 900); pop("MANIA... MANIA... BLAST!", "blastp"); land = 750; }
+          else if (u === 1) { drawMe("happy", "charge"); pop("STAR STORM!", "blastp"); for (let n = 0; n < 9; n++) fxAdd("bstar", 350 + n * 90, 700, `--x:${55 + Math.random() * 35}%`); land = 600; }
+          else { drawMe("happy", "meteor"); pop("METEOR SLAM!", "blastp"); fxAdd("bimpact", 700, 700); land = 700; }
+          fxAdd("bflash", land, 400); shake(land); hitFoe(land); setTimeout(() => confetti(1), land); buzz([20, 30, 60]);
+        } else if (crit) {
+          // Fast answer: a quick 3-hit flurry, then an energy ball that bursts on the boss.
+          drawMe("happy", "flurry"); fxAdd("bspeed", 0, 500); fxAdd("bball", 250, 450); fxAdd("bburst", 650, 500);
+          pop("CRITICAL!", "crit"); land = 650; hitFoe(land); shake(land);
+        } else { drawMe("happy", "punch"); pop(["POW!", "BAM!", "WHAM!", "SMACK!"][G.right.length % 4], "hitp"); land = 200; hitFoe(land); }
+        setTimeout(() => pop(`-${dmg}`, "dmg"), land + 100);
+        if (G.combo >= 3 && !blast) setTimeout(() => pop(`${G.combo} HIT COMBO!`, "combo"), land + 200);
+        // 3+ in a row: a golden aura flares up and stays until you miss.
+        if (G.combo === 3) { pop("POWERING UP!", "pup"); }
+        $("baura").classList.toggle("on", G.combo >= 3);
         chime("good");
         if (!G.rage && G.hp > 0 && G.hp <= 50) {
-          G.rage = true; setTimeout(() => { foeP.classList.add("rage"); pop("It's powering up!", "rage"); setTimeout(() => pop("This isn't even its final form?!", "rage2"), 700); buzz([40, 40, 40]); }, 700);
+          G.rage = true; setTimeout(() => { foeP.classList.add("rage"); fxAdd("bring", 0, 900); fxAdd("bring", 250, 900); shake(0); pop("It's powering up!", "rage"); setTimeout(() => pop("This isn't even its final form?!", "rage2"), 700); buzz([40, 40, 40]); }, 700);
         }
         bars();
-        setTimeout(() => { if (G.hp <= 0) win(); else ask(); }, G.rage && G.hp <= 50 && G.hp + dmg > 50 ? 2300 : 900);
+        setTimeout(() => { if (G.hp <= 0) win(); else ask(); }, (G.rage && G.hp <= 50 && G.hp + dmg > 50 ? 2300 : 900) + (blast ? 900 : crit ? 300 : 0));
       } else {
         G.missed.push(k); queue.splice(Math.min(queue.length, 2 + Math.floor(Math.random() * 3)), 0, k); // comes back soon
-        G.combo = 0; G.hearts--; G.power = Math.max(0, G.power - 20);
+        G.combo = 0; G.hearts--; G.power = Math.max(0, G.power - 20); $("baura").classList.remove("on");
         foeP.classList.remove("attack"); void foeP.offsetWidth; foeP.classList.add("attack");
         setTimeout(() => { drawMe("yikes", G.hearts <= 0 ? "ko" : "ouch"); pop(i < 0 ? "TOO SLOW!" : "BONK!", "bonk"); $("barena").classList.add("shake"); setTimeout(() => $("barena").classList.remove("shake"), 400); }, 250);
         chime("bad"); buzz([30, 40, 30]); bars();
