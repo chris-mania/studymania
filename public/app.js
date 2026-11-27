@@ -2529,7 +2529,7 @@ route(/^\/game\/([\w-]+)\/(fall|match|sort|tf|boss)$/, async (id, kind) => {
     const words = d.cards.filter((k) => !isPair(k)), N = Math.min(12, words.length);
     const queue = gamePick(d, N, words);
     const base = Math.ceil(100 / N);
-    Object.assign(G, { hp: 100, hearts: 3, combo: 0, best: 0, power: 0, blast: false, rage: false, score: 0, q: null, t0: 0, left: 0, busy: false });
+    Object.assign(G, { hp: 100, hearts: 3, combo: 0, best: 0, power: 0, blast: false, rage: false, score: 0, q: null, t0: 0, left: 0, busy: false, asked: 0, mv: 0, finish: "" });
     const petSize = ["baby", "kid"].includes(stageOf(pet.days).id) ? 150 : 124;
     app.innerHTML = hud(`<span class="bhearts" id="bh"></span><span class="btime" id="bt">15</span>`) + `
       <div class="bbars"><div class="bbar me"><i id="bme" style="width:100%"></i></div><b class="bvs">VS</b><div class="bbar foe"><i id="bfoe" style="width:100%"></i></div></div>
@@ -2538,11 +2538,17 @@ route(/^\/game\/([\w-]+)\/(fall|match|sort|tf|boss)$/, async (id, kind) => {
       <div class="barena stage-${stage.id}" id="barena"><div class="bstage" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div><span class="bstagename">${esc(stage.name)}</span><div class="bfx" id="bfx"></div>
         <div class="baura" id="baura" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
         <div class="bme" id="bmeP" aria-hidden="true"></div>
-        <div class="bfoe" id="bfoeP" style="--bc:${boss.color}">${bossSVG(boss, 132)}</div></div>
+        <div class="bfoe" id="bfoeP" style="--bc:${boss.color}">${bossSVG(boss, 132)}<div class="bmarks" id="bmarks"></div></div></div>
       <div class="bcard" id="bcard"></div></div>`;
     const meP = $("bmeP"), foeP = $("bfoeP"), card = $("bcard"), fx = $("bfx");
     const drawMe = (mood = "idle", cls = "") => { meP.className = "bme " + cls; meP.innerHTML = petSVG(pet, { size: petSize, mood, hurt: 3 - G.hearts }); };
     const fxAdd = (cls, delay, life, style = "") => setTimeout(() => { if (!alive()) return; const e = document.createElement("i"); e.className = "bfxi " + cls; if (style) e.style.cssText = style; fx.appendChild(e); setTimeout(() => e.remove(), life); }, delay);
+    // Where things are in the arena (so blasts come out of your Maniac's body and land on the boss).
+    const ctr = (el) => { const a = $("barena").getBoundingClientRect(), r = el.getBoundingClientRect(); return { x: r.left - a.left + r.width / 2, y: r.top - a.top + r.height * 0.55, w: a.width }; };
+    const fxAt = (cls, delay, life, css) => setTimeout(() => { if (!alive()) return; const e = document.createElement("i"); e.className = "bfxi " + cls; e.style.cssText = css(); fx.appendChild(e); setTimeout(() => e.remove(), life); }, delay);
+    // Boss gets beat up as its health drops: a bruise, then a bandage, then cracks and sweat.
+    const marks = () => { const m = $("bmarks"); if (!m) return; m.className = "bmarks" + (G.hp <= 75 ? " m1" : "") + (G.hp <= 50 ? " m2" : "") + (G.hp <= 25 ? " m3" : ""); };
+    const hitSpark = (delay) => fxAt("bspark", delay, 450, () => { const f = ctr(foeP); return `left:${f.x - 30}px;top:${f.y - 30}px`; });
     const pop = (text, cls) => { const e = document.createElement("div"); e.className = "bpop " + cls; e.textContent = text; fx.appendChild(e); setTimeout(() => e.remove(), 1300); };
     const bars = () => {
       $("bh").innerHTML = [0, 1, 2].map((i) => `<i class="${i < G.hearts ? "" : "off"}">♥</i>`).join("");
@@ -2555,30 +2561,35 @@ route(/^\/game\/([\w-]+)\/(fall|match|sort|tf|boss)$/, async (id, kind) => {
     card.innerHTML = `<div class="bintro"><div class="bvsbig">VS</div><p>“${esc(boss.taunt)}”</p><button class="btn primary block" id="bgo">FIGHT!</button></div>`;
     pop("ROUND 1", "round");
     $("bgo").onclick = () => { pop("FIGHT!", "fight"); chime("good"); ask(); };
-    const timerMax = () => (G.rage ? 10 : 15);
+    // The clock gets shorter as the fight goes on (and shorter again once the boss powers up).
+    const timerMax = () => Math.max(5, Math.round(15 - G.asked * 0.7) - (G.rage ? 3 : 0));
     const ask = () => {
       if (!alive()) return;
       if (G.hp <= 0) return win();
       if (G.hearts <= 0) return lose();
       if (!queue.length) queue.push(...gamePick(d, Math.min(6, words.length), words));
-      const k = queue.shift(); G.q = k; markShown(d, [k]); G.busy = false;
+      const k = queue.shift(); G.q = k; markShown(d, [k]); G.busy = false; G.asked++;
       const rev = Math.random() < 0.35; // sometimes show the meaning and ask for the word
       const opts = shuffle([k, ...distract(k, 3)]);
       card.innerHTML = `<div class="bq ${G.power >= 100 ? "charged" : ""}"><div class="kicker">${G.power >= 100 ? "⚡ POWER FULL: next hit is a MANIA BLAST" : rev ? "Which word is this?" : "Attack! Pick the meaning"}</div>
         <div class="bprompt">${rev ? esc(maskTerm(k.simple, k)) : `What does <b>${esc(k.term)}</b> mean?`}</div>
+        <div class="btimer"><i id="btbar"></i></div>
         <div class="bopts">${opts.map((o, i) => `<button class="bopt" data-i="${i}">${esc(rev ? o.term : maskTerm(o.simple, o))}</button>`).join("")}</div></div>`;
       card.querySelector(".bq").animate([{ transform: "translateY(60%)", opacity: 0 }, { transform: "translateY(0)", opacity: 1 }], { duration: 300, easing: "cubic-bezier(.2,.9,.3,1)" });
       G.t0 = performance.now(); G.left = timerMax();
-      clearInterval(G.tick); G.tick = setInterval(() => {
+      const tb = $("btbar"); requestAnimationFrame(() => { tb.style.transition = `width ${G.left}s linear, background-color 1s`; tb.style.width = "0%"; });
+      $("bt").textContent = G.left;
+      G.tmax = G.left; clearInterval(G.tick); G.tick = setInterval(() => {
         if (!alive()) return clearInterval(G.tick);
         if (G.busy) return;
-        G.left = Math.max(0, timerMax() - Math.floor((performance.now() - G.t0) / 1000)); $("bt").textContent = G.left; $("bt").classList.toggle("low", G.left <= 4);
+        const tm = G.tmax || (G.tmax = timerMax());
+        G.left = Math.max(0, tm - Math.floor((performance.now() - G.t0) / 1000)); $("bt").textContent = G.left; $("bt").classList.toggle("low", G.left <= 3); $("btbar")?.classList.toggle("low", G.left <= 3);
         if (G.left <= 0) answer(-1, opts);
       }, 250);
       card.querySelectorAll(".bopt").forEach((b) => (b.onclick = () => answer(+b.dataset.i, opts)));
     };
     const answer = (i, opts) => {
-      if (G.busy) return; G.busy = true; clearInterval(G.tick);
+      if (G.busy) return; G.busy = true; clearInterval(G.tick); const tbs = $("btbar"); if (tbs) { tbs.style.transition = "none"; tbs.style.width = getComputedStyle(tbs).width; }
       const k = G.q, ok = i >= 0 && opts[i] === k, secs = (performance.now() - G.t0) / 1000;
       card.querySelectorAll(".bopt").forEach((b, j) => { if (opts[j] === k) b.classList.add("right"); else if (j === i) b.classList.add("wrong"); b.disabled = true; });
       if (ok) {
@@ -2593,15 +2604,31 @@ route(/^\/game\/([\w-]+)\/(fall|match|sort|tf|boss)$/, async (id, kind) => {
         if (blast) {
           // Ultimates take turns: an energy wave, a star storm, a meteor slam.
           const u = (store.get("sm-boss-ult", -1) + 1) % 3; store.set("sm-boss-ult", u); // rotates across fights too
-          if (u === 0) { drawMe("happy", "charge"); fxAdd("borb", 0, 700); fxAdd("bbeam", 650, 900); pop("MANIA... MANIA... BLAST!", "blastp"); land = 750; }
-          else if (u === 1) { drawMe("happy", "charge"); pop("STAR STORM!", "blastp"); for (let n = 0; n < 9; n++) fxAdd("bstar", 350 + n * 90, 700, `--x:${55 + Math.random() * 35}%`); land = 600; }
-          else { drawMe("happy", "meteor"); pop("METEOR SLAM!", "blastp"); fxAdd("bimpact", 700, 700); land = 700; }
+          const me = ctr(meP);
+          if (u === 0) {
+            drawMe("happy", "charge"); pop("MANIA... MANIA... BLAST!", "blastp");
+            for (let n = 0; n < 8; n++) fxAt("bsuck", n * 60, 600, () => { const a = (n / 8) * Math.PI * 2; return `left:${me.x + 10}px;top:${me.y}px;--dx:${Math.cos(a) * 60}px;--dy:${Math.sin(a) * 60}px`; });
+            fxAt("borb", 0, 900, () => `left:${me.x + 14 - 18}px;top:${me.y - 18}px`);
+            fxAt("bbeam", 800, 1000, () => `left:${me.x + 20}px;top:${me.y - 26}px;width:${me.w - me.x}px`);
+            land = 900; G.finish = "launch";
+          } else if (u === 1) { drawMe("happy", "charge"); pop("STAR STORM!", "blastp"); fxAt("borb star", 0, 500, () => `left:${me.x - 18}px;top:${me.y - 50}px`); for (let n = 0; n < 9; n++) fxAdd("bstar", 350 + n * 90, 700, `--x:${55 + Math.random() * 35}%`); land = 600; G.finish = "launch"; }
+          else { drawMe("happy", "meteor"); pop("METEOR SLAM!", "blastp"); fxAdd("bimpact", 700, 700); land = 700; G.finish = "launch"; }
           fxAdd("bflash", land, 400); shake(land); hitFoe(land); setTimeout(() => confetti(1), land); buzz([20, 30, 60]);
         } else if (crit) {
           // Fast answer: a quick 3-hit flurry, then an energy ball that bursts on the boss.
-          drawMe("happy", "flurry"); fxAdd("bspeed", 0, 500); fxAdd("bball", 250, 450); fxAdd("bburst", 650, 500);
-          pop("CRITICAL!", "crit"); land = 650; hitFoe(land); shake(land);
-        } else { drawMe("happy", "punch"); pop(["POW!", "BAM!", "WHAM!", "SMACK!"][G.right.length % 4], "hitp"); land = 200; hitFoe(land); }
+          const me = ctr(meP), fo = ctr(foeP);
+          drawMe("happy", "flurry"); fxAdd("bspeed", 0, 500);
+          fxAt("bball", 300, 380, () => `left:${me.x}px;top:${me.y - 11}px;--tx:${fo.x - me.x}px`);
+          fxAt("bburst", 650, 500, () => `left:${fo.x - 30}px;top:${fo.y - 30}px`);
+          pop("CRITICAL!", "crit"); land = 650; hitFoe(land); shake(land); G.finish = "launch";
+        } else {
+          // Regular hits take turns: punch, kick, headbutt, energy ball.
+          const mv = ["punch", "kick", "headbutt", "ki"][G.mv++ % 4];
+          if (mv === "ki") { const me = ctr(meP), fo = ctr(foeP); drawMe("happy", "throwki"); fxAt("bball blue", 200, 380, () => `left:${me.x}px;top:${me.y - 11}px;--tx:${fo.x - me.x}px`); fxAt("bburst blue", 560, 450, () => `left:${fo.x - 30}px;top:${fo.y - 30}px`); land = 560; G.finish = "launch"; }
+          else { drawMe("happy", mv); land = 220; G.finish = "fall"; }
+          pop({ punch: ["POW!", "BAM!"][G.mv % 2], kick: "KICK!", headbutt: "BONK!", ki: "ZAP!" }[mv], "hitp"); hitFoe(land); hitSpark(land);
+        }
+        setTimeout(marks, land);
         setTimeout(() => pop(`-${dmg}`, "dmg"), land + 100);
         if (G.combo >= 3 && !blast) setTimeout(() => pop(`${G.combo} HIT COMBO!`, "combo"), land + 200);
         // 3+ in a row: a golden aura flares up and stays until you miss.
@@ -2616,6 +2643,8 @@ route(/^\/game\/([\w-]+)\/(fall|match|sort|tf|boss)$/, async (id, kind) => {
       } else {
         G.missed.push(k); queue.splice(Math.min(queue.length, 2 + Math.floor(Math.random() * 3)), 0, k); // comes back soon
         G.combo = 0; G.hearts--; G.power = Math.max(0, G.power - 20); $("baura").classList.remove("on");
+        // The boss feeds off your mistakes: it gets a little health back.
+        const heal = Math.min(100 - G.hp, 6); if (heal > 0) { G.hp += heal; setTimeout(() => { pop(`+${heal}`, "heal"); marks(); bars(); }, 450); }
         // Each boss attacks its own way.
         const atk = boss.attack;
         foeP.classList.remove("attack", "atk-slam", "atk-throw", "atk-zap", "atk-pound", "atk-spin"); void foeP.offsetWidth; foeP.classList.add("atk-" + atk);
@@ -2636,7 +2665,8 @@ route(/^\/game\/([\w-]+)\/(fall|match|sort|tf|boss)$/, async (id, kind) => {
       }
     };
     const win = () => {
-      clearInterval(G.tick); foeP.classList.add("ko"); pop("K.O.!", "ko"); chime("win"); confetti(1.4);
+      // Beams, blasts and critical hits send the boss flying off screen; punches and kicks knock it flat.
+      clearInterval(G.tick); foeP.classList.add(G.finish === "launch" ? "kofly" : "ko"); pop("K.O.!", "ko"); chime("win"); confetti(1.4);
       G.score += G.hearts * 100 + G.best * 15;
       setTimeout(() => alive() && over(G.score, true, `<div class="bko">K.O.!</div><div class="bres">${esc(pet.name || "Your Maniac")} beat ${esc(boss.name)} · ${plural(G.hearts, "heart")} left · best combo x${G.best}</div>`), 1800);
     };
