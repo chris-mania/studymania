@@ -1,7 +1,7 @@
 /* Study Mania — app screens */
 import { addDays, daysBetween, niceDate, buildLessons, planFor, lessonsAndPlan, isTricky, pickThrowbacks, secondReminderHour, mergeMissed, mastery, needsRetest, needScore, parseBest, GAME_KINDS } from "./shared.mjs";
 import { localApi, hasGuestData, guestExport, clearGuest } from "./local.mjs";
-import { BOSSES, STAGES, bossSVG } from "./boss.mjs";
+import { BOSSES, STAGES, bossSVG, projSVG } from "./boss.mjs";
 import { TINTABLE, TINT_COLORS, mouthAt, petSVG, emblemSVG, rankOf, allRanks, ITEMS, item, owns, inSeason, stageOf, nextStage, SPECIES_NAME, FREEZE_MAX, TIERS, TOP_XP } from "./pet.mjs";
 
 // ---------- helpers ----------
@@ -2523,12 +2523,13 @@ route(/^\/game\/([\w-]+)\/(fall|match|sort|tf|boss)$/, async (id, kind) => {
     // and you see the right answer; that word comes back later. 5 in a row charges a triple-damage Mania Blast.
     // At half health the boss powers up (shorter timer). 3 hearts.
     // A different random boss and stage every fight (never the same boss twice in a row).
+    // All 16 bosses have the same odds, big bosses included (so a big boss is a lucky/unlucky surprise).
     const lastB = store.get("sm-boss-last", ""), pool = BOSSES.filter((b) => b.id !== lastB);
     const pet = myPet(), boss = pool[Math.floor(Math.random() * pool.length)], stage = STAGES[Math.floor(Math.random() * STAGES.length)];
     store.set("sm-boss-last", boss.id);
     const words = d.cards.filter((k) => !isPair(k)), N = Math.min(12, words.length);
     const queue = gamePick(d, N, words);
-    const base = Math.ceil(100 / N);
+    const BIG = !!boss.big, base = Math.ceil(100 / (N * (BIG ? 1.6 : 1))); // big bosses take ~60% more hits
     Object.assign(G, { hp: 100, hearts: 3, combo: 0, best: 0, power: 0, blast: false, rage: false, score: 0, q: null, t0: 0, left: 0, busy: false, asked: 0, mv: 0, finish: "" });
     const petSize = ["baby", "kid"].includes(stageOf(pet.days).id) ? 150 : 124;
     app.innerHTML = hud(`<span class="bhearts" id="bh"></span><span class="btime" id="bt">15</span>`) + `
@@ -2536,18 +2537,22 @@ route(/^\/game\/([\w-]+)\/(fall|match|sort|tf|boss)$/, async (id, kind) => {
       <div class="bnames"><span>${esc(pet.name || "Your Maniac")}</span><span>${esc(boss.name)}</span></div>
       <div class="bpower"><span>POWER</span><div><i id="bpw" style="width:0%"></i></div><span id="bcombo"></span></div>
       <div class="barena stage-${stage.id}" id="barena"><div class="bstage" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div><span class="bstagename">${esc(stage.name)}</span><div class="bfx" id="bfx"></div>
-        <div class="baura" id="baura" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
         <div class="bme" id="bmeP" aria-hidden="true"></div>
-        <div class="bfoe" id="bfoeP" style="--bc:${boss.color}">${bossSVG(boss, 132)}<div class="bmarks" id="bmarks"></div></div></div>
+        <div class="bfoe ${BIG ? "bigboss" : ""}" id="bfoeP" style="--bc:${boss.color}">${bossSVG(boss, BIG ? 158 : 132)}<div class="bmarks" id="bmarks"></div></div></div>
       <div class="bcard" id="bcard"></div></div>`;
     const meP = $("bmeP"), foeP = $("bfoeP"), card = $("bcard"), fx = $("bfx");
-    const drawMe = (mood = "idle", cls = "") => { meP.className = "bme " + cls; meP.innerHTML = petSVG(pet, { size: petSize, mood, hurt: 3 - G.hearts }); };
+    // The golden aura lives inside your Maniac, so it moves with every punch and kick.
+    const drawMe = (mood = "idle", cls = "") => { meP.className = "bme " + cls; meP.innerHTML = `<div class="baura ${G.combo >= 3 ? "on" : ""}" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>${petSVG(pet, { size: petSize, mood, hurt: 3 - G.hearts })}`; };
+    // How far to dash so a punch or kick actually lands on the boss.
+    const setReach = () => { const a = meP.getBoundingClientRect(), b = foeP.getBoundingClientRect(); meP.style.setProperty("--reach", Math.max(40, b.left - a.right + a.width * 0.45) + "px"); };
     const fxAdd = (cls, delay, life, style = "") => setTimeout(() => { if (!alive()) return; const e = document.createElement("i"); e.className = "bfxi " + cls; if (style) e.style.cssText = style; fx.appendChild(e); setTimeout(() => e.remove(), life); }, delay);
     // Where things are in the arena (so blasts come out of your Maniac's body and land on the boss).
     const ctr = (el) => { const a = $("barena").getBoundingClientRect(), r = el.getBoundingClientRect(); return { x: r.left - a.left + r.width / 2, y: r.top - a.top + r.height * 0.55, w: a.width }; };
     const fxAt = (cls, delay, life, css) => setTimeout(() => { if (!alive()) return; const e = document.createElement("i"); e.className = "bfxi " + cls; e.style.cssText = css(); fx.appendChild(e); setTimeout(() => e.remove(), life); }, delay);
     // Boss gets beat up as its health drops: a bruise, then a bandage, then cracks and sweat.
-    const marks = () => { const m = $("bmarks"); if (!m) return; m.className = "bmarks" + (G.hp <= 75 ? " m1" : "") + (G.hp <= 50 ? " m2" : "") + (G.hp <= 25 ? " m3" : ""); };
+    // ...and gets angrier: redder and shakier the more you hit it.
+    const marks = () => { const m = $("bmarks"); if (!m) return; m.className = "bmarks" + (G.hp <= 75 ? " m1" : "") + (G.hp <= 50 ? " m2" : "") + (G.hp <= 25 ? " m3" : "");
+      foeP.classList.toggle("angry1", G.hp <= 75 && G.hp > 50); foeP.classList.toggle("angry2", G.hp <= 50 && G.hp > 25); foeP.classList.toggle("angry3", G.hp <= 25); };
     const hitSpark = (delay) => fxAt("bspark", delay, 450, () => { const f = ctr(foeP); return `left:${f.x - 30}px;top:${f.y - 30}px`; });
     const pop = (text, cls) => { const e = document.createElement("div"); e.className = "bpop " + cls; e.textContent = text; fx.appendChild(e); setTimeout(() => e.remove(), 1300); };
     const bars = () => {
@@ -2558,11 +2563,12 @@ route(/^\/game\/([\w-]+)\/(fall|match|sort|tf|boss)$/, async (id, kind) => {
     };
     drawMe(); bars();
     // Intro: VS splash and a taunt, then fight.
-    card.innerHTML = `<div class="bintro"><div class="bvsbig">VS</div><p>“${esc(boss.taunt)}”</p><button class="btn primary block" id="bgo">FIGHT!</button></div>`;
-    pop("ROUND 1", "round");
+    card.innerHTML = `<div class="bintro">${BIG ? `<div class="bigwarn">⚠️ BIG BOSS ⚠️</div><p class="muted small" style="margin:0">Way tougher, hits harder and gives you less time. Good luck.</p>` : `<div class="bvsbig">VS</div>`}<p>“${esc(boss.taunt)}”</p><button class="btn primary block" id="bgo">FIGHT!</button></div>`;
+    pop(BIG ? "WARNING!" : "ROUND 1", BIG ? "round warnp" : "round");
+    if (BIG) { $("barena").classList.add("bigfight"); buzz([60, 60, 60]); }
     $("bgo").onclick = () => { pop("FIGHT!", "fight"); chime("good"); ask(); };
     // The clock gets shorter as the fight goes on (and shorter again once the boss powers up).
-    const timerMax = () => Math.max(5, Math.round(15 - G.asked * 0.7) - (G.rage ? 3 : 0));
+    const timerMax = () => Math.max(BIG ? 4 : 5, Math.round(15 - G.asked * 0.7) - (G.rage ? 3 : 0) - (BIG ? 2 : 0));
     const ask = () => {
       if (!alive()) return;
       if (G.hp <= 0) return win();
@@ -2617,13 +2623,13 @@ route(/^\/game\/([\w-]+)\/(fall|match|sort|tf|boss)$/, async (id, kind) => {
         } else if (crit) {
           // Fast answer: a quick 3-hit flurry, then an energy ball that bursts on the boss.
           const me = ctr(meP), fo = ctr(foeP);
-          drawMe("happy", "flurry"); fxAdd("bspeed", 0, 500);
+          setReach(); drawMe("happy", "flurry"); fxAdd("bspeed", 0, 500);
           fxAt("bball", 300, 380, () => `left:${me.x}px;top:${me.y - 11}px;--tx:${fo.x - me.x}px`);
           fxAt("bburst", 650, 500, () => `left:${fo.x - 30}px;top:${fo.y - 30}px`);
           pop("CRITICAL!", "crit"); land = 650; hitFoe(land); shake(land); G.finish = "launch";
         } else {
           // Regular hits take turns: punch, kick, headbutt, energy ball.
-          const mv = ["punch", "kick", "headbutt", "ki"][G.mv++ % 4];
+          const mv = ["punch", "kick", "headbutt", "ki"][G.mv++ % 4]; setReach();
           if (mv === "ki") { const me = ctr(meP), fo = ctr(foeP); drawMe("happy", "throwki"); fxAt("bball blue", 200, 380, () => `left:${me.x}px;top:${me.y - 11}px;--tx:${fo.x - me.x}px`); fxAt("bburst blue", 560, 450, () => `left:${fo.x - 30}px;top:${fo.y - 30}px`); land = 560; G.finish = "launch"; }
           else { drawMe("happy", mv); land = 220; G.finish = "fall"; }
           pop({ punch: ["POW!", "BAM!"][G.mv % 2], kick: "KICK!", headbutt: "BONK!", ki: "ZAP!" }[mv], "hitp"); hitFoe(land); hitSpark(land);
@@ -2633,24 +2639,28 @@ route(/^\/game\/([\w-]+)\/(fall|match|sort|tf|boss)$/, async (id, kind) => {
         if (G.combo >= 3 && !blast) setTimeout(() => pop(`${G.combo} HIT COMBO!`, "combo"), land + 200);
         // 3+ in a row: a golden aura flares up and stays until you miss.
         if (G.combo === 3) { pop("POWERING UP!", "pup"); }
-        $("baura").classList.toggle("on", G.combo >= 3);
+        meP.querySelector(".baura")?.classList.toggle("on", G.combo >= 3);
         chime("good");
         if (!G.rage && G.hp > 0 && G.hp <= 50) {
-          G.rage = true; setTimeout(() => { foeP.classList.add("rage"); fxAdd("bring", 0, 900); fxAdd("bring", 250, 900); shake(0); pop("It's powering up!", "rage"); setTimeout(() => pop("This isn't even its final form?!", "rage2"), 700); buzz([40, 40, 40]); }, 700);
+          G.rage = true; setTimeout(() => { foeP.classList.add("rage"); fxAdd("bring", 0, 900); fxAdd("bring", 250, 900); shake(0); pop(`${boss.name} is getting MAD!`, "rage"); buzz([40, 40, 40]); }, 700);
         }
         bars();
         setTimeout(() => { if (!alive()) return; if (G.hp <= 0) win(); else ask(); }, (G.rage && G.hp <= 50 && G.hp + dmg > 50 ? 2300 : 900) + (blast ? 900 : crit ? 300 : 0));
       } else {
         G.missed.push(k); queue.splice(Math.min(queue.length, 2 + Math.floor(Math.random() * 3)), 0, k); // comes back soon
-        G.combo = 0; G.hearts--; G.power = Math.max(0, G.power - 20); $("baura").classList.remove("on");
+        G.combo = 0; G.hearts--; G.power = Math.max(0, G.power - 20); meP.querySelector(".baura")?.classList.remove("on");
         // The boss feeds off your mistakes: it gets a little health back.
         const heal = Math.min(100 - G.hp, 6); if (heal > 0) { G.hp += heal; setTimeout(() => { pop(`+${heal}`, "heal"); marks(); bars(); }, 450); }
         // Each boss attacks its own way.
         const atk = boss.attack;
         foeP.classList.remove("attack", "atk-slam", "atk-throw", "atk-zap", "atk-pound", "atk-spin"); void foeP.offsetWidth; foeP.classList.add("atk-" + atk);
-        if (atk === "throw") { const e = document.createElement("i"); e.className = "bfxi bshot"; e.textContent = boss.shot || "!"; fx.appendChild(e); setTimeout(() => e.remove(), 700); }
-        if (atk === "zap") fxAdd("bzap", 80, 450);
-        if (atk === "pound") fxAdd("bquake", 150, 600);
+        // Every boss uses its own stuff: papers, books, clocks, candy, ice...
+        const fo = ctr(foeP), me = ctr(meP), shot = (delay, cls) => setTimeout(() => { if (!alive()) return; const e = document.createElement("i"); e.className = "bfxi bproj " + cls; e.innerHTML = projSVG(boss); e.style.cssText = `left:${fo.x - 15}px;top:${fo.y - 20}px;--tx:${me.x - fo.x}px;--ty:${me.y - fo.y}px`; fx.appendChild(e); setTimeout(() => e.remove(), 700); }, delay);
+        if (atk === "throw") { shot(80, "lob"); shot(200, "lob"); if (BIG) shot(320, "lob"); }
+        if (atk === "zap") { fxAdd("bzap", 80, 450); shot(60, "fast"); }
+        if (atk === "pound") { fxAdd("bquake", 150, 600); shot(250, "roll"); }
+        if (atk === "slam" || atk === "spin") fxAt("bproj hitme", 300, 500, () => `left:${me.x - 15}px;top:${me.y - 30}px`);
+        if (atk === "slam" || atk === "spin") setTimeout(() => { const e = fx.querySelector(".hitme"); if (e) e.innerHTML = projSVG(boss); }, 310);
         setTimeout(() => { if (!alive()) return; drawMe("yikes", G.hearts <= 0 ? "ko" : "ouch"); pop(i < 0 ? "TOO SLOW!" : "BONK!", "bonk"); $("barena").classList.add("shake"); setTimeout(() => $("barena")?.classList.remove("shake"), 400); }, 250);
         chime("bad"); buzz([30, 40, 30]); bars();
         const pk = i >= 0 ? opts[i] : null;

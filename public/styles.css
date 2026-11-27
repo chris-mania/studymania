@@ -1091,3 +1091,37 @@ details summary{list-style:revert}
 @keyframes koFly{0%{transform:none;filter:brightness(3)}15%{filter:none}100%{transform:translate(260px,-220px) rotate(720deg) scale(.4);opacity:.9}}
 .bpop.heal{left:auto;right:24px;top:30%;font-size:22px;color:#8bd795;-webkit-text-stroke:1.5px #14161c}
 .bpop.blastp{font-size:19px}
+
+/* ===== Boss Battle v4 ===== */
+/* moves reach the boss (distance set per hit) */
+@keyframes bPunch{40%{transform:translateX(var(--reach,90px)) rotate(8deg)}55%{transform:translateX(calc(var(--reach,90px) - 8px))}}
+@keyframes bKick{35%{transform:translateX(var(--reach,92px)) rotate(-28deg)}50%{transform:translateX(calc(var(--reach,92px) - 6px)) rotate(-22deg)}100%{transform:none}}
+@keyframes bHead{25%{transform:translateX(-10px) rotate(-10deg)}45%{transform:translateX(var(--reach,96px)) rotate(14deg)}60%{transform:translateX(calc(var(--reach,96px) - 10px)) rotate(4deg)}100%{transform:none}}
+@keyframes bFlurry{15%{transform:translateX(var(--reach,70px))}25%{transform:translateX(calc(var(--reach,70px) - 14px))}35%{transform:translateX(var(--reach,70px))}45%{transform:translateX(calc(var(--reach,70px) - 14px))}55%{transform:translateX(var(--reach,70px))}100%{transform:none}}
+/* aura sits inside your Maniac now */
+.bme .baura{position:absolute;left:-6%;right:-6%;bottom:-2%;top:0;width:auto;height:auto;z-index:-1}
+.bme{isolation:isolate}
+/* anger */
+.bfoe.angry1{filter:saturate(1.2) drop-shadow(0 0 4px rgba(255,80,80,.45))}
+.bfoe.angry2{filter:saturate(1.35) sepia(.15) hue-rotate(-10deg) drop-shadow(0 0 8px rgba(255,60,60,.6))}
+.bfoe.angry3{filter:saturate(1.6) sepia(.3) hue-rotate(-20deg) drop-shadow(0 0 12px #ff3b3b)}
+.bfoe.angry2 svg{animation:bRage .4s linear infinite}.bfoe.angry3 svg{animation:bRage .18s linear infinite}
+.bfoe.angry2::after,.bfoe.angry3::after{content:"💢";position:absolute;right:8%;top:6%;font-size:22px;animation:mad 1s ease-in-out infinite}
+@keyframes mad{50%{transform:scale(1.25)}}
+/* big bosses */
+.bfoe.bigboss{right:0}
+.barena.bigfight{box-shadow:0 0 0 2px #e23b5a,0 0 24px rgba(226,59,90,.45)}
+.bigwarn{font:italic 900 34px/1 "Barlow",var(--display);color:#ff5a5a;-webkit-text-stroke:1.5px #14161c;animation:warnBlink .6s ease-in-out infinite alternate}
+@keyframes warnBlink{to{opacity:.5;transform:scale(1.04)}}
+.bpop.warnp{color:#ff5a5a}
+/* boss projectiles */
+.bfxi.bproj{width:30px;height:30px;bottom:auto;right:auto}
+.bfxi.bproj svg{width:100%;height:100%;display:block;filter:drop-shadow(0 2px 2px rgba(0,0,0,.4))}
+.bfxi.bproj.lob{animation:lob .55s ease-in forwards}
+@keyframes lob{0%{transform:translate(0,0) rotate(0)}50%{transform:translate(calc(var(--tx) * .5),calc(var(--ty) * .5 - 50px)) rotate(-270deg)}100%{transform:translate(var(--tx),var(--ty)) rotate(-540deg)}}
+.bfxi.bproj.fast{animation:fastshot .3s linear forwards}
+@keyframes fastshot{to{transform:translate(var(--tx),var(--ty))}}
+.bfxi.bproj.roll{animation:roll .45s ease-in forwards}
+@keyframes roll{to{transform:translate(var(--tx),var(--ty)) rotate(-720deg)}}
+.bfxi.bproj.hitme{animation:hitme .5s ease-out forwards}
+@keyframes hitme{0%{transform:scale(.3);opacity:0}30%{transform:scale(1.4);opacity:1}100%{transform:scale(1.1) translateY(-14px);opacity:0}}

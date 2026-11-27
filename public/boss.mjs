@@ -99,7 +99,53 @@ BOSSES.push(
       ${eye(48, 52, 9, "#5b6b86")}${eye(72, 52, 9, "#5b6b86")}${brow(38, 40, 54, 46)}${brow(82, 40, 66, 46)}<ellipse cx="60" cy="76" rx="9" ry="7" fill="${INK}"/>
       <rect x="92" y="60" width="22" height="12" rx="3" fill="#ff7eb6" transform="rotate(-30 103 66)"/>` },
 );
+// Big bosses: rare (same odds as any other boss), tougher, with a warning screen. All original designs.
+BOSSES.push(
+  { id: "sugar", name: "Sugar Crash", color: "#ff7eb6", big: true, attack: "throw",
+    taunt: "Have a snack... and then CRASH! Hahaha!",
+    svg: () => `<path d="M30 70 L90 70 L82 114 L38 114 Z" fill="#8d5bd6"/><path d="M38 70 L44 114 M52 70 L55 114 M66 70 L65 114 M80 70 L76 114" stroke="#b48bf0" stroke-width="4"/>
+      <path d="M20 72 C14 46 34 24 60 24 C86 24 106 46 100 72 C96 80 90 74 86 82 C82 90 78 78 72 86 C66 94 62 80 56 88 C50 96 46 80 40 86 C34 92 30 78 26 82 C22 84 20 78 20 72 Z" fill="#ff7eb6"/>
+      <circle cx="60" cy="18" r="8" fill="#e2543e"/><path d="M60 10 Q64 2 70 4" stroke="#2bb673" stroke-width="3" fill="none" stroke-linecap="round"/>
+      <path d="M30 40 L34 37 M44 30 L48 32 M74 30 L77 34 M88 42 L92 40 M38 58 L42 60 M82 58 L86 56" stroke="#fff" stroke-width="3" stroke-linecap="round"/><path d="M52 36 L56 34 M66 44 L70 46" stroke="#4b98f7" stroke-width="3" stroke-linecap="round"/>
+      ${eye(46, 56, 9, "#e2543e")}${eye(74, 56, 9, "#e2543e")}${brow(36, 44, 54, 50)}${brow(84, 44, 66, 50)}${teeth(44, 70, 32)}` },
+  { id: "freeze", name: "Brain Freeze", color: "#7fd6ff", big: true, attack: "zap",
+    taunt: "Your mind goes blank... and COLD.",
+    svg: () => `<path d="M20 30 L100 26 L104 108 L16 110 Z" fill="#cfeeff" stroke="#7fd6ff" stroke-width="4" stroke-linejoin="round"/>
+      <path d="M20 30 L30 22 L44 28 L54 18 L66 26 L80 16 L90 26 L100 26" fill="#e9f8ff" stroke="#7fd6ff" stroke-width="3" stroke-linejoin="round"/>
+      <path d="M28 46 L40 58 L34 70 M88 80 L78 92 L84 102" stroke="#9fdcff" stroke-width="3" fill="none"/>
+      ${eye(44, 56, 10, "#00a3ff")}${eye(76, 56, 10, "#00a3ff")}${brow(32, 42, 54, 50)}${brow(88, 42, 66, 50)}
+      <path d="M38 80 L82 80 L76 86 L72 98 L68 86 L62 100 L58 86 L52 98 L48 86 L44 94 Z" fill="#14161c"/><path d="M40 80 L80 80" stroke="#fff" stroke-width="3"/>` },
+  { id: "mantis", name: "Exam Mantis", color: "#2bb673", big: true, attack: "slam",
+    taunt: "Fill in the bubbles... or get SLICED!",
+    svg: () => `<path d="M42 30 Q36 10 26 6 M78 30 Q84 10 94 6" stroke="#1f8a5c" stroke-width="4" fill="none" stroke-linecap="round"/>
+      <path d="M8 60 L30 74 L22 92 M112 60 L90 74 L98 92" stroke="#1f8a5c" stroke-width="7" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 56 L14 40 L18 62 Z M116 56 L106 40 L102 62 Z" fill="#f2c94c" stroke="#14161c" stroke-width="2"/>
+      <path d="M60 24 C84 24 92 44 90 70 C88 98 76 114 60 114 C44 114 32 98 30 70 C28 44 36 24 60 24 Z" fill="#2bb673"/>
+      <ellipse cx="42" cy="48" rx="13" ry="16" fill="#14161c"/><ellipse cx="78" cy="48" rx="13" ry="16" fill="#14161c"/><ellipse cx="38" cy="43" rx="4" ry="5" fill="#fff"/><ellipse cx="74" cy="43" rx="4" ry="5" fill="#fff"/>
+      ${brow(30, 32, 52, 40)}${brow(90, 32, 68, 40)}
+      <rect x="44" y="76" width="32" height="30" rx="4" fill="#f4f6fa"/><g fill="none" stroke="#5b6b86" stroke-width="1.5"><circle cx="51" cy="83" r="3"/><circle cx="60" cy="83" r="3"/><circle cx="69" cy="83" r="3"/><circle cx="51" cy="92" r="3"/><circle cx="69" cy="92" r="3"/><circle cx="60" cy="100" r="3"/></g><circle cx="60" cy="92" r="3" fill="#14161c"/><circle cx="51" cy="100" r="3" fill="#14161c"/>
+      <path d="M50 66 L54 70 L58 66 L62 70 L66 66 L70 70" stroke="#14161c" stroke-width="3" fill="none" stroke-linejoin="round"/>` },
+);
 BOSSES.forEach((b) => { b.attack = b.attack || "slam"; });
+// Every boss has its own thing it throws or fires at you.
+const PROJ = {
+  forgetter: `<rect x="2" y="7" width="22" height="10" rx="3" fill="#ff7eb6" stroke="#14161c" stroke-width="1.5"/><rect x="16" y="7" width="8" height="10" fill="#f4ecdc"/>`,
+  goblin: `<rect x="3" y="4" width="20" height="16" rx="2" fill="#e2543e" stroke="#14161c" stroke-width="1.5"/><rect x="6" y="6" width="14" height="12" fill="#f4ecdc"/><text x="13" y="16" text-anchor="middle" font-family="Fredoka,sans-serif" font-weight="700" font-size="9" fill="#e2543e">F-</text>`,
+  fog: `<path d="M4 16 C2 10 8 6 12 9 C14 3 22 4 22 10 C27 10 27 18 22 18 L6 18 Z" fill="#a9b2c3"/><path d="M10 18 L7 24 L11 23 L9 28" stroke="#f2c94c" stroke-width="2" fill="none"/>`,
+  drake: `<path d="M13 2 C20 9 22 14 19 20 C17 24 9 24 7 20 C4 14 9 10 13 2 Z" fill="#ff8a1f"/><path d="M13 10 C17 14 17 18 14 21 C12 22 10 20 10 18 C10 15 12 13 13 10 Z" fill="#ffe36e"/>`,
+  specter: `<path d="M2 12 L8 6 L10 12 L16 4 L18 12 L24 8 L20 16 L14 14 L12 20 L8 14 Z" fill="#7fd6ff" stroke="#fff" stroke-width="1.5"/>`,
+  slug: `<text x="13" y="20" text-anchor="middle" font-family="Fredoka,sans-serif" font-weight="700" font-size="20" fill="#bfe0ff" stroke="#14161c" stroke-width="1">z</text>`,
+  popquiz: `<path d="M3 3 L19 3 L23 7 L23 23 L3 23 Z" fill="#fff6c2" stroke="#14161c" stroke-width="1.5"/><text x="13" y="19" text-anchor="middle" font-family="Fredoka,sans-serif" font-weight="700" font-size="14" fill="#e2543e">?</text>`,
+  scroller: `<rect x="2" y="6" width="22" height="14" rx="7" fill="#e2543e"/><text x="13" y="17" text-anchor="middle" font-family="Fredoka,sans-serif" font-weight="700" font-size="11" fill="#fff">99+</text>`,
+  procrast: `<circle cx="13" cy="14" r="9" fill="#f4ecdc" stroke="#14161c" stroke-width="2"/><path d="M13 14 L13 8 M13 14 L17 16" stroke="#14161c" stroke-width="2" stroke-linecap="round"/><circle cx="6" cy="5" r="3" fill="#e2543e"/><circle cx="20" cy="5" r="3" fill="#e2543e"/>`,
+  golem: `<path d="M4 18 L6 8 L14 4 L22 9 L23 19 L13 23 Z" fill="#7d8597" stroke="#5a6170" stroke-width="2"/>`,
+  hornet: `<path d="M2 13 L18 8 L24 13 L18 18 Z" fill="#14161c"/><path d="M8 11 L8 15 M12 10 L12 16" stroke="#f2c94c" stroke-width="2"/>`,
+  kraken: `<path d="M2 20 C6 6 18 4 22 10 C24 14 20 18 16 14" stroke="#2bb673" stroke-width="5" fill="none" stroke-linecap="round"/>`,
+  blank: `<rect x="1" y="8" width="24" height="10" rx="3" fill="#ff7eb6" transform="rotate(-20 13 13)"/>`,
+  sugar: `<circle cx="13" cy="13" r="10" fill="#ff7eb6"/><path d="M8 9 L10 8 M15 7 L17 8 M18 14 L19 16 M7 15 L9 16" stroke="#fff" stroke-width="2" stroke-linecap="round"/><path d="M13 23 Q11 27 13 29" stroke="#ff7eb6" stroke-width="3" fill="none"/>`,
+  freeze: `<path d="M13 1 L13 25 M2 7 L24 19 M2 19 L24 7" stroke="#7fd6ff" stroke-width="3" stroke-linecap="round"/><circle cx="13" cy="13" r="3" fill="#fff"/>`,
+  mantis: `<circle cx="13" cy="13" r="9" fill="#8bd795" opacity=".6"/><circle cx="13" cy="13" r="5" fill="#d6f5c9"/>`,
+};
+export const projSVG = (b) => `<svg viewBox="0 0 26 30" width="30" height="30" aria-hidden="true">${PROJ[b.id] || PROJ.golem}</svg>`;
 // Fight stages, picked at random: background art for the arena.
 export const STAGES = [
   { id: "city", name: "Sunset City" }, { id: "dojo", name: "Old Dojo" }, { id: "library", name: "Midnight Library" },
